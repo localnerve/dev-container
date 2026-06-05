@@ -12,6 +12,7 @@ services:
     volumes:
       - /Users/agrant/projects:/workspace
       - ~/.gitconfig:/home/vscode/.gitconfig:ro
+      - ~/.gitconfig.local:/home/vscode/.gitconfig.local:ro
       - /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
       - gcm-tokens:/home/vscode/.config/GitCredentialManager
     environment:
