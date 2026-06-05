@@ -1,19 +1,25 @@
 services:
   dev-workstation:
-    build: .
+    build:
+      context: .
+      args:
+        GCM_VERSION: "2.8.0"
+        NODE_VERSIONS: "22 24"
+        NODE_DEFAULT: "24"
+        GO_VERSIONS: "1.25.5 1.26.0"
+        GO_DEFAULT: "1.26.0"
     container_name: dev-env
     volumes:
       - /Users/agrant/projects:/workspace
-      - nvm_data:/root/.nvm
-      - goenv_data:/root/.goenv
-      - ~/.gitconfig:/root/.gitconfig:ro
-      # Standard way to forward SSH on Docker Desktop for Mac
+      - ~/.gitconfig:/home/vscode/.gitconfig:ro
       - /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
+      - gcm-tokens:/home/vscode/.config/GitCredentialManager
     environment:
       - SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
+      - GCM_CREDENTIAL_STORE=plaintext
     tty: true
     stdin_open: true
 
 volumes:
-  nvm_data:
-  goenv_data:
+  gcm-tokens:
+    name: gcm_cache

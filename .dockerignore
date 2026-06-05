@@ -1,0 +1,26 @@
+# Exclude standard version control layouts
+.git
+.gitignore
+.github
+
+# Exclude application dependency directories 
+# (Prevents host machine builds from overriding container layers)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+
+# Exclude Go compilation caches and binaries
+go/
+bin/
+pkg/
+
+# Exclude local environment managers and secrets
+.env
+.env.*
+.devcontainer/
+
+# Exclude operating system clutter
+.DS_Store
+Thumbs.db
