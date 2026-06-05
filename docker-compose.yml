@@ -1,0 +1,21 @@
+services:
+  dev-workstation:
+    build: .
+    container_name: dev-env
+    volumes:
+      - /users/agrant/projects:/workspace
+      - nvm_data:/root/.nvm
+      - goenv_data:/root/.goenv
+      - ~/.gitconfig:/root/.gitconfig:ro
+    # connect the host's ssh agent to the container
+    ssh_auth_sock: default
+    # Keeps the container running in the background
+    tty: true
+    stdin_open: true
+    # Ensures internal asdf shims are in the path
+    environment:
+      - PATH=/root/.asdf/shims:/root/.asdf/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+volumes:
+  nvm_data:
+  goenv_data:
