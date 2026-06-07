@@ -7,7 +7,10 @@ ARG NODE_VERSIONS="22 24"
 ARG NODE_DEFAULT=24
 
 ARG GO_VERSIONS="1.23.5 1.25.5 1.26.0"
-ARG GO_DEFAULT=1.24.3
+ARG GO_DEFAULT=1.26.0
+
+# GCM cache timeout in seconds (default: 30 days)
+ARG GCM_CACHE_TIMEOUT=2592000
 
 # =============================================================================
 # Base image + system packages
@@ -19,13 +22,13 @@ ARG NODE_VERSIONS
 ARG NODE_DEFAULT
 ARG GO_VERSIONS
 ARG GO_DEFAULT
+ARG GCM_CACHE_TIMEOUT
 
 # Non-root user provided by the base devcontainer image
 ARG USERNAME=vscode
 ARG USER_HOME=/home/${USERNAME}
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pass gpg git libssl-dev pkg-config ca-certificates curl \
@@ -66,15 +69,25 @@ RUN git clone --depth=1 https://github.com/go-nv/goenv.git ${GOENV_ROOT} \
     "
 
 # =============================================================================
-# GCM + shell profiles
+# GCM — system-wide config as root, credential cache as non-root
 # =============================================================================
 USER root
 RUN git-credential-manager configure \
-    && git config --system credential.gitHubAuthModes devicecode
+    && git config --system credential.gitHubAuthModes devicecode \
+    && git config --system credential.credentialStore cache \
+    && git config --system credential.cacheOptions "--timeout ${GCM_CACHE_TIMEOUT}"
+
+# Lock down the system gitconfig so it can't be overridden by a mounted
+# ~/.gitconfig to use a less secure store
+RUN chmod 644 /etc/gitconfig
 
 USER ${USERNAME}
 
-# --- bash: alias-based hook (covers interactive cd only) ---
+# =============================================================================
+# Shell profiles
+# =============================================================================
+
+# --- bash ---
 RUN <<'EOF' tee -a ${USER_HOME}/.bashrc
 # nvm
 export NVM_DIR="${HOME}/.nvm"
@@ -88,53 +101,8 @@ export PATH="${GOENV_ROOT}/bin:${PATH}"
 eval "$(goenv init -)"
 export PATH="${PATH}:${GOPATH}/bin"
 
-# auto-switch on cd (bash: alias only covers the cd builtin)
+# auto-switch on directory change (bash: aliases cover interactive use)
 _load_versions() {
-    if [[ -f .nvmrc && -r .nvmrc ]] || [[ -f .node-version && -r .node-version ]]; then
-        local node_version
-        node_version="$(nvm version)"
-        local nvmrc_path
-        nvmrc_path="$(nvm_find_nvmrc)"
-        if [[ -n "$nvmrc_path" ]]; then
-            local nvmrc_node_version
-            nvmrc_node_version="$(nvm version "$(cat "${nvmrc_path}")")"
-            if [[ "$nvmrc_node_version" == "N/A" ]]; then
-                nvm install
-            elif [[ "$nvmrc_node_version" != "$node_version" ]]; then
-                nvm use
-            fi
-        fi
-    elif [[ "$(nvm version)" != "$(nvm version default)" ]]; then
-        echo "Reverting to nvm default version"
-        nvm use default
-    fi
-
-    if [[ -f .go-version && -r .go-version ]]; then
-        goenv local "$(cat .go-version)"
-    fi
-}
-alias cd='_load_versions_cd() { command cd "$@" && _load_versions; }; _load_versions_cd'
-alias pushd='_load_versions_pushd() { command pushd "$@" && _load_versions; }; _load_versions_pushd'
-alias popd='_load_versions_popd() { command popd "$@" && _load_versions; }; _load_versions_popd'
-EOF
-
-# --- zsh: chpwd hook (fires on any directory change) ---
-RUN <<'EOF' tee -a ${USER_HOME}/.zshrc
-# nvm
-export NVM_DIR="${HOME}/.nvm"
-[ -s "${NVM_DIR}/nvm.sh" ] && \. "${NVM_DIR}/nvm.sh"
-
-# goenv
-export GOENV_ROOT="${HOME}/.goenv"
-export GOPATH="${HOME}/go"
-export GOENV_DISABLE_GOPATH=1
-export PATH="${GOENV_ROOT}/bin:${PATH}"
-eval "$(goenv init -)"
-export PATH="${PATH}:${GOPATH}/bin"
-
-# auto-switch on any directory change (covers cd, pushd, popd, and programmatic PWD changes)
-_load_versions() {
-    # Node version management
     local node_version
     node_version="$(nvm version)"
     local nvmrc_path
@@ -153,7 +121,49 @@ _load_versions() {
         nvm use default
     fi
 
-    # Go version management
+    if [[ -f .go-version && -r .go-version ]]; then
+        goenv local "$(cat .go-version)"
+    fi
+}
+alias cd='_load_versions_cd() { command cd "$@" && _load_versions; }; _load_versions_cd'
+alias pushd='_load_versions_pushd() { command pushd "$@" && _load_versions; }; _load_versions_pushd'
+alias popd='_load_versions_popd() { command popd "$@" && _load_versions; }; _load_versions_popd'
+EOF
+
+# --- zsh ---
+RUN <<'EOF' tee -a ${USER_HOME}/.zshrc
+# nvm
+export NVM_DIR="${HOME}/.nvm"
+[ -s "${NVM_DIR}/nvm.sh" ] && \. "${NVM_DIR}/nvm.sh"
+
+# goenv
+export GOENV_ROOT="${HOME}/.goenv"
+export GOPATH="${HOME}/go"
+export GOENV_DISABLE_GOPATH=1
+export PATH="${GOENV_ROOT}/bin:${PATH}"
+eval "$(goenv init -)"
+export PATH="${PATH}:${GOPATH}/bin"
+
+# auto-switch on any directory change (chpwd fires for cd, pushd, popd, and programmatic changes)
+_load_versions() {
+    local node_version
+    node_version="$(nvm version)"
+    local nvmrc_path
+    nvmrc_path="$(nvm_find_nvmrc)"
+
+    if [[ -n "$nvmrc_path" ]]; then
+        local nvmrc_node_version
+        nvmrc_node_version="$(nvm version "$(cat "${nvmrc_path}")")"
+        if [[ "$nvmrc_node_version" == "N/A" ]]; then
+            nvm install
+        elif [[ "$nvmrc_node_version" != "$node_version" ]]; then
+            nvm use
+        fi
+    elif [[ "$node_version" != "$(nvm version default)" ]]; then
+        echo "Reverting to nvm default version"
+        nvm use default
+    fi
+
     if [[ -f .go-version && -r .go-version ]]; then
         goenv local "$(cat .go-version)"
     fi
