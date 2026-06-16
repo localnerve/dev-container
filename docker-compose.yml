@@ -6,7 +6,7 @@ services:
         GCM_VERSION: "2.8.0"
         NODE_VERSIONS: "22 24"
         NODE_DEFAULT: "24"
-        GO_VERSIONS: "1.23.5 1.25.5 1.26.0"
+        GO_VERSIONS: "1.26.0"
         GO_DEFAULT: "1.26.0"
         GCM_CACHE_TIMEOUT: "2592000"
     container_name: dev-env
