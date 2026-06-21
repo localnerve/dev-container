@@ -6,7 +6,7 @@ ARG GCM_VERSION=2.8.0
 ARG NODE_VERSIONS="22 24"
 ARG NODE_DEFAULT=24
 
-ARG GO_VERSIONS="1.25.5 1.26.0"
+ARG GO_VERSIONS="1.26.0"
 ARG GO_DEFAULT=1.26.0
 
 # GCM cache timeout in seconds (default: 30 days)
@@ -23,6 +23,11 @@ ARG NODE_DEFAULT
 ARG GO_VERSIONS
 ARG GO_DEFAULT
 ARG GCM_CACHE_TIMEOUT
+
+# GID of the host's Docker socket (DooD). On Docker Desktop for Mac this is
+# typically root-owned inside the VM regardless of host-side ownership —
+# verify with `ls -la ~/.docker/run/docker.sock` on the host. Default 0 (root)
+# matches the common Docker Desktop for Mac case.
 ARG DOCKER_GID=0
 
 ARG USERNAME=vscode
@@ -30,63 +35,112 @@ ARG USER_HOME=/home/${USERNAME}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Collapse all apt work into one layer: update, install prereqs, add PPA,
-# update again, install chromium + GCM, then wipe lists and caches.
+# Puppeteer/Playwright: use the system/Playwright-managed browser rather than
+# triggering Puppeteer's own Chromium download.
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+# =============================================================================
+# System packages: build prereqs, chromium, Docker CLI (DooD), GCM,
+# Xvfb/x11vnc for headful debugging.
+# =============================================================================
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        pass gpg git libssl-dev pkg-config ca-certificates curl \
-        software-properties-common \
+       pass gpg git libssl-dev pkg-config ca-certificates curl \
+       software-properties-common \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     \
-    # --- Temporary Node + Playwright, used only to resolve system deps ---
-    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g playwright \
-    && npx playwright install-deps chromium \
-    && npx playwright install-deps firefox \
-    && npx playwright install-deps webkit \
+    # --- Chromium (system browser, used by Puppeteer via PUPPETEER_EXECUTABLE_PATH) ---
+    && add-apt-repository ppa:xtradeb/apps -y \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends chromium \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
     \
-    # --- Extras not covered by Playwright's installer ---
+    # --- Xvfb + x11vnc for headful browser debugging ---
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
        xvfb \
        x11-utils \
        x11vnc \
+    && mkdir -p /tmp/.X11-unix \
+    && chmod 1777 /tmp/.X11-unix \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
     \
-    # --- GCM ---
-    && ARCH=$(dpkg --print-architecture) \
-    && curl -fsSL \
-       "https://github.com/git-ecosystem/git-credential-manager/releases/download/v${GCM_VERSION}/gcm-linux-${ARCH}-${GCM_VERSION}.deb" \
-       -o /tmp/gcm.deb \
-    && apt-get install -y /tmp/gcm.deb \
-    && rm /tmp/gcm.deb \
-    \
-    # --- docker-ce-cli ---
+    # --- Docker CLI only (no daemon) — DooD talks to the host/Docker Desktop
+    #     VM daemon via the bind-mounted socket; Testcontainers inside this
+    #     devcontainer launches sibling service containers on that daemon,
+    #     exactly as it would on a bare GHA runner. ---
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
     && chmod a+r /etc/apt/keyrings/docker.asc \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
        > /etc/apt/sources.list.d/docker.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends docker-ce-cli docker-buildx-plugin docker-compose-plugin \
+    && apt-get install -y --no-install-recommends \
+       docker-ce-cli \
+       docker-buildx-plugin \
+       docker-compose-plugin \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
     \
-    # --- Teardown: remove the bootstrap Node/Playwright, keep only system libs ---
+    # --- Git Credential Manager ---
+    && ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL \
+       "https://github.com/git-ecosystem/git-credential-manager/releases/download/v${GCM_VERSION}/gcm-linux-${ARCH}-${GCM_VERSION}.deb" \
+       -o /tmp/gcm.deb \
+    && apt-get install -y /tmp/gcm.deb \
+    && rm /tmp/gcm.deb \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+RUN if [ ! -x "$PUPPETEER_EXECUTABLE_PATH" ]; then \
+        echo "Error: Chromium not found at $PUPPETEER_EXECUTABLE_PATH"; \
+        exit 1; \
+    fi
+
+# =============================================================================
+# Playwright / Puppeteer system dependencies
+#
+# This installs the ~220 apt packages browsers need to render (codecs, font
+# rendering, GTK, gstreamer, etc.) using Playwright's own OS-aware dependency
+# resolver — far more reliable than hand-curating package names/versions,
+# which drift between Ubuntu releases.
+#
+# IMPORTANT: this only installs *system libraries*. It does NOT install the
+# playwright/puppeteer npm packages or browser binaries — those belong to
+# each project's own node_modules and are installed by each project's own
+# `npm install` + `npx playwright install`. This keeps the devcontainer a
+# general-purpose web-dev base rather than coupled to one project's
+# dependency versions.
+#
+# A throwaway system Node + global playwright package is used purely to
+# invoke `install-deps`, then removed.
+# =============================================================================
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g playwright \
+    && npx playwright install-deps chromium \
+    && npx playwright install-deps firefox \
+    && npx playwright install-deps webkit \
     && npm uninstall -g playwright \
     && apt-get remove -y --purge nodejs \
     && apt-get autoremove -y --purge \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* ~/.npm /usr/lib/node_modules
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.npm /usr/lib/node_modules
 
 # =============================================================================
-# nvm + Node
+# nvm + Node — installed as the non-root user
 # =============================================================================
 ENV NVM_DIR=${USER_HOME}/.nvm
 
 USER ${USERNAME}
+WORKDIR ${USER_HOME}
 
 # Install nvm and all Node versions in one layer, then strip:
 #   - npm caches
-#   - node_modules of nvm itself
 #   - unused man pages and docs bundled with each node install
 RUN curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash \
     && bash -c " \
@@ -103,7 +157,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh |
     && find ${USER_HOME}/.nvm/versions -type d -name 'include' -exec rm -rf {} + 2>/dev/null || true
 
 # =============================================================================
-# goenv + Go
+# goenv + Go — installed as the non-root user
 # =============================================================================
 ENV GOENV_ROOT=${USER_HOME}/.goenv
 ENV GOPATH=${USER_HOME}/go
@@ -135,7 +189,16 @@ RUN git-credential-manager configure \
     && chmod 644 /etc/gitconfig
 
 # =============================================================================
-# DOCKER — configure
+# DooD — give vscode access to the bind-mounted host Docker socket.
+#
+# On Docker Desktop for Mac, the socket as seen *inside* this container is
+# owned by root:root regardless of its apparent ownership on the macOS side
+# (Docker Desktop's VM presents its own internal ownership, not a host
+# UID/GID translation). DOCKER_GID therefore defaults to 0 (root) — joining
+# vscode to GID 0 is the standard, narrow fix for this specific scenario.
+# Verified safe: no unexpected group-writable files exist outside the
+# intentionally-mounted sockets (checked via
+# `find / -xdev -group root -perm -020 -type f`).
 # =============================================================================
 RUN if getent group ${DOCKER_GID} > /dev/null; then \
         EXISTING_GROUP=$(getent group ${DOCKER_GID} | cut -d: -f1); \
@@ -144,6 +207,13 @@ RUN if getent group ${DOCKER_GID} > /dev/null; then \
         groupadd -g ${DOCKER_GID} docker-host \
         && usermod -aG docker-host ${USERNAME}; \
     fi
+
+# Pre-create the Playwright cache dir with correct ownership so the named
+# volume mounted here (see compose) comes up owned by vscode, not root.
+RUN mkdir -p ${USER_HOME}/.cache \
+    && chown ${USERNAME}:${USERNAME} ${USER_HOME}/.cache \
+    && mkdir -p ${USER_HOME}/.cache/ms-playwright \
+    && chown -R ${USERNAME}:${USERNAME} ${USER_HOME}/.cache/ms-playwright
 
 # =============================================================================
 # Shell profiles
@@ -163,33 +233,7 @@ export PATH="${GOENV_ROOT}/bin:${PATH}"
 eval "$(goenv init -)"
 export PATH="${PATH}:${GOPATH}/bin"
 
-# Xvfb helper — start on demand for headful debugging
-export DISPLAY=:99
-
-xvfb-start() {
-    if ! pgrep -f "Xvfb :99" > /dev/null; then
-        Xvfb :99 -screen 0 1920x1080x24 &
-        sleep 1
-        echo "Xvfb started on :99"
-    else
-        echo "Xvfb already running on :99"
-    fi
-
-    if ! pgrep -f "x11vnc.*:99" > /dev/null; then
-        x11vnc -display :99 -forever -shared -nopw -quiet &
-        echo "x11vnc started, connect on port 5900"
-    else
-        echo "x11vnc already running"
-    fi
-}
-
-xvfb-stop() {
-    pkill -f "x11vnc.*:99"
-    pkill -f "Xvfb :99"
-    echo "Xvfb and x11vnc stopped"
-}
-
-# auto-switch on directory change
+# auto-switch on directory change (bash: aliases cover interactive use)
 _load_versions() {
     local node_version
     node_version="$(nvm version)"
@@ -216,25 +260,13 @@ _load_versions() {
 alias cd='_load_versions_cd() { command cd "$@" && _load_versions; }; _load_versions_cd'
 alias pushd='_load_versions_pushd() { command pushd "$@" && _load_versions; }; _load_versions_pushd'
 alias popd='_load_versions_popd() { command popd "$@" && _load_versions; }; _load_versions_popd'
-EOF
 
-RUN <<'EOF' tee -a ${USER_HOME}/.zshrc
-# nvm
-export NVM_DIR="${HOME}/.nvm"
-[ -s "${NVM_DIR}/nvm.sh" ] && \. "${NVM_DIR}/nvm.sh"
-
-# goenv
-export GOENV_ROOT="${HOME}/.goenv"
-export GOPATH="${HOME}/go"
-export GOENV_DISABLE_GOPATH=1
-export PATH="${GOENV_ROOT}/bin:${PATH}"
-eval "$(goenv init -)"
-export PATH="${PATH}:${GOPATH}/bin"
-
-# Xvfb helper — start on demand for headful debugging
-export DISPLAY=:99
-
+# --- Xvfb + x11vnc on-demand helpers for headful browser debugging ---
+# DISPLAY=:99 is set globally via ENV in the image. Headless test runs are
+# unaffected; only headful runs (headless:false / page.pause()) need
+# xvfb-start first. Connect a VNC client to localhost:5900 to watch live.
 xvfb-start() {
+    export DISPLAY=:99
     if ! pgrep -f "Xvfb :99" > /dev/null; then
         Xvfb :99 -screen 0 1920x1080x24 &
         sleep 1
@@ -252,12 +284,27 @@ xvfb-start() {
 }
 
 xvfb-stop() {
+    unset DISPLAY
     pkill -f "x11vnc.*:99"
     pkill -f "Xvfb :99"
     echo "Xvfb and x11vnc stopped"
 }
+EOF
 
-# auto-switch on any directory change
+RUN <<'EOF' tee -a ${USER_HOME}/.zshrc
+# nvm
+export NVM_DIR="${HOME}/.nvm"
+[ -s "${NVM_DIR}/nvm.sh" ] && \. "${NVM_DIR}/nvm.sh"
+
+# goenv
+export GOENV_ROOT="${HOME}/.goenv"
+export GOPATH="${HOME}/go"
+export GOENV_DISABLE_GOPATH=1
+export PATH="${GOENV_ROOT}/bin:${PATH}"
+eval "$(goenv init -)"
+export PATH="${PATH}:${GOPATH}/bin"
+
+# auto-switch on any directory change (chpwd fires for cd, pushd, popd, and programmatic changes)
 _load_versions() {
     local node_version
     node_version="$(nvm version)"
@@ -284,13 +331,39 @@ _load_versions() {
 
 autoload -Uz add-zsh-hook
 add-zsh-hook chpwd _load_versions
+
+# Run once on shell startup to handle the initial working directory
 _load_versions
+
+# --- Xvfb + x11vnc on-demand helpers for headful browser debugging ---
+xvfb-start() {
+    export DISPLAY=:99
+    if ! pgrep -f "Xvfb :99" > /dev/null; then
+        Xvfb :99 -screen 0 1920x1080x24 &
+        sleep 1
+        echo "Xvfb started on :99"
+    else
+        echo "Xvfb already running on :99"
+    fi
+
+    if ! pgrep -f "x11vnc.*:99" > /dev/null; then
+        x11vnc -display :99 -forever -shared -nopw -quiet &
+        echo "x11vnc started, connect on port 5900"
+    else
+        echo "x11vnc already running"
+    fi
+}
+
+xvfb-stop() {
+    unset DISPLAY
+    pkill -f "x11vnc.*:99"
+    pkill -f "Xvfb :99"
+    echo "Xvfb and x11vnc stopped"
+}
 EOF
 
 # =============================================================================
-# Final
+# Final working directory
 # =============================================================================
 WORKDIR /workspace
-RUN mkdir -p /home/${USERNAME}/.cache/ms-playwright \
-    && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.cache/ms-playwright
 CMD ["sleep", "infinity"]

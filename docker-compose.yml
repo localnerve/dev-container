@@ -9,24 +9,49 @@ services:
         GO_VERSIONS: "1.26.0"
         GO_DEFAULT: "1.26.0"
         GCM_CACHE_TIMEOUT: "2592000"
-        DOCKER_GID: ${DOCKER_GID}
+        # GID inside the container for the bind-mounted Docker socket (DooD).
+        # On Docker Desktop for Mac this is typically 0 (root) — see Dockerfile
+        # comment for why. Override via .env if your setup differs.
+        DOCKER_GID: ${DOCKER_GID:-0}
     container_name: dev-env
-    platform: linux/arm64
-    security_opt:
-      - seccomp=unconfined
-    ports:
-      - "5900:5900" # vnc port for visual debugging
     volumes:
       - ${PROJECTS_PATH}:/workspace
       - ~/.gitconfig:/home/vscode/.gitconfig:ro
       - ~/.gitconfig.local:/home/vscode/.gitconfig.local:ro
       - ${SSH_AUTH_SOCK}:/run/host-services/ssh-auth.sock
+
+      # DooD: bind-mount the real Docker Desktop socket (NOT /var/run/docker.sock,
+      # which is a symlink on macOS — see ${DOCKER_SOCK} resolution notes below).
+      # Testcontainers inside this devcontainer launches sibling service
+      # containers directly on the host/Docker Desktop daemon, exactly as it
+      # would on a bare GHA runner — no nested daemon, no dind.
       - ${DOCKER_SOCK}:/var/run/docker.sock
+
+      # Shared cache for Playwright-managed browser binaries (downloaded by
+      # each project's own `npx playwright install`). Persists across
+      # container rebuilds. Linux-binary-only — NOT shared with the macOS
+      # host's own Playwright cache, since browser binaries are
+      # platform-specific (see playwright-cache volume note below).
       - playwright-cache:/home/vscode/.cache/ms-playwright
+
     environment:
       - SSH_AUTH_SOCK=${SSH_AUTH_SOCK}
       - DOCKER_HOST=unix:///var/run/docker.sock
       - DEVCONTAINER=true
+      - TESTCONTAINERS_RYUK_DISABLED=false  # Ryuk works fine under DooD; keep enabled for cleanup
+
+    # Required for Chromium's zygote sandbox to spawn correctly under
+    # Docker's default seccomp profile. A scoped custom profile
+    # (e.g. jessfraz/dotfiles chrome.json) is preferable if you can get it
+    # loading without filesystem errors; unconfined is the working fallback.
+    security_opt:
+      - seccomp=unconfined
+
+    ports:
+      # x11vnc — connect via `vnc://localhost:5900` for live headful browser
+      # debugging (see xvfb-start / xvfb-stop shell helpers).
+      - "5900:5900"
+
     tty: true
     stdin_open: true
 
