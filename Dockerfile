@@ -23,35 +23,59 @@ ARG NODE_DEFAULT
 ARG GO_VERSIONS
 ARG GO_DEFAULT
 ARG GCM_CACHE_TIMEOUT
+ARG DOCKER_GID=0
 
 ARG USERNAME=vscode
 ARG USER_HOME=/home/${USERNAME}
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Collapse all apt work into one layer: update, install prereqs, add PPA,
 # update again, install chromium + GCM, then wipe lists and caches.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       pass gpg git libssl-dev pkg-config ca-certificates curl \
-       software-properties-common \
-    && add-apt-repository ppa:xtradeb/apps -y \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends chromium \
+        pass gpg git libssl-dev pkg-config ca-certificates curl \
+        software-properties-common \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    \
+    # --- Temporary Node + Playwright, used only to resolve system deps ---
+    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g playwright \
+    && npx playwright install-deps chromium \
+    && npx playwright install-deps firefox \
+    && npx playwright install-deps webkit \
+    \
+    # --- Extras not covered by Playwright's installer ---
+    && apt-get install -y --no-install-recommends \
+       xvfb \
+       x11-utils \
+       x11vnc \
+    \
+    # --- GCM ---
     && ARCH=$(dpkg --print-architecture) \
     && curl -fsSL \
        "https://github.com/git-ecosystem/git-credential-manager/releases/download/v${GCM_VERSION}/gcm-linux-${ARCH}-${GCM_VERSION}.deb" \
        -o /tmp/gcm.deb \
     && apt-get install -y /tmp/gcm.deb \
     && rm /tmp/gcm.deb \
+    \
+    # --- docker-ce-cli ---
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
+       > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-ce-cli docker-buildx-plugin docker-compose-plugin \
+    \
+    # --- Teardown: remove the bootstrap Node/Playwright, keep only system libs ---
+    && npm uninstall -g playwright \
+    && apt-get remove -y --purge nodejs \
+    && apt-get autoremove -y --purge \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-RUN if [ ! -x "$PUPPETEER_EXECUTABLE_PATH" ]; then \
-        echo "Error: Chromium not found at $PUPPETEER_EXECUTABLE_PATH"; exit 1; \
-    fi
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* ~/.npm /usr/lib/node_modules
 
 # =============================================================================
 # nvm + Node
@@ -111,6 +135,17 @@ RUN git-credential-manager configure \
     && chmod 644 /etc/gitconfig
 
 # =============================================================================
+# DOCKER — configure
+# =============================================================================
+RUN if getent group ${DOCKER_GID} > /dev/null; then \
+        EXISTING_GROUP=$(getent group ${DOCKER_GID} | cut -d: -f1); \
+        usermod -aG ${EXISTING_GROUP} ${USERNAME}; \
+    else \
+        groupadd -g ${DOCKER_GID} docker-host \
+        && usermod -aG docker-host ${USERNAME}; \
+    fi
+
+# =============================================================================
 # Shell profiles
 # =============================================================================
 USER ${USERNAME}
@@ -127,6 +162,32 @@ export GOENV_DISABLE_GOPATH=1
 export PATH="${GOENV_ROOT}/bin:${PATH}"
 eval "$(goenv init -)"
 export PATH="${PATH}:${GOPATH}/bin"
+
+# Xvfb helper — start on demand for headful debugging
+export DISPLAY=:99
+
+xvfb-start() {
+    if ! pgrep -f "Xvfb :99" > /dev/null; then
+        Xvfb :99 -screen 0 1920x1080x24 &
+        sleep 1
+        echo "Xvfb started on :99"
+    else
+        echo "Xvfb already running on :99"
+    fi
+
+    if ! pgrep -f "x11vnc.*:99" > /dev/null; then
+        x11vnc -display :99 -forever -shared -nopw -quiet &
+        echo "x11vnc started, connect on port 5900"
+    else
+        echo "x11vnc already running"
+    fi
+}
+
+xvfb-stop() {
+    pkill -f "x11vnc.*:99"
+    pkill -f "Xvfb :99"
+    echo "Xvfb and x11vnc stopped"
+}
 
 # auto-switch on directory change
 _load_versions() {
@@ -170,6 +231,32 @@ export PATH="${GOENV_ROOT}/bin:${PATH}"
 eval "$(goenv init -)"
 export PATH="${PATH}:${GOPATH}/bin"
 
+# Xvfb helper — start on demand for headful debugging
+export DISPLAY=:99
+
+xvfb-start() {
+    if ! pgrep -f "Xvfb :99" > /dev/null; then
+        Xvfb :99 -screen 0 1920x1080x24 &
+        sleep 1
+        echo "Xvfb started on :99"
+    else
+        echo "Xvfb already running on :99"
+    fi
+
+    if ! pgrep -f "x11vnc.*:99" > /dev/null; then
+        x11vnc -display :99 -forever -shared -nopw -quiet &
+        echo "x11vnc started, connect on port 5900"
+    else
+        echo "x11vnc already running"
+    fi
+}
+
+xvfb-stop() {
+    pkill -f "x11vnc.*:99"
+    pkill -f "Xvfb :99"
+    echo "Xvfb and x11vnc stopped"
+}
+
 # auto-switch on any directory change
 _load_versions() {
     local node_version
@@ -204,4 +291,6 @@ EOF
 # Final
 # =============================================================================
 WORKDIR /workspace
+RUN mkdir -p /home/${USERNAME}/.cache/ms-playwright \
+    && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.cache/ms-playwright
 CMD ["sleep", "infinity"]

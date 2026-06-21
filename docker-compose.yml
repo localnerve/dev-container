@@ -9,13 +9,26 @@ services:
         GO_VERSIONS: "1.26.0"
         GO_DEFAULT: "1.26.0"
         GCM_CACHE_TIMEOUT: "2592000"
+        DOCKER_GID: ${DOCKER_GID}
     container_name: dev-env
+    platform: linux/arm64
+    security_opt:
+      - seccomp=unconfined
+    ports:
+      - "5900:5900" # vnc port for visual debugging
     volumes:
       - ${PROJECTS_PATH}:/workspace
       - ~/.gitconfig:/home/vscode/.gitconfig:ro
       - ~/.gitconfig.local:/home/vscode/.gitconfig.local:ro
       - ${SSH_AUTH_SOCK}:/run/host-services/ssh-auth.sock
+      - ${DOCKER_SOCK}:/var/run/docker.sock
+      - playwright-cache:/home/vscode/.cache/ms-playwright
     environment:
       - SSH_AUTH_SOCK=${SSH_AUTH_SOCK}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - DEVCONTAINER=true
     tty: true
     stdin_open: true
+
+volumes:
+  playwright-cache:
