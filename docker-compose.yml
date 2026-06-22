@@ -9,13 +9,91 @@ services:
         GO_VERSIONS: "1.26.0"
         GO_DEFAULT: "1.26.0"
         GCM_CACHE_TIMEOUT: "2592000"
+        # GID inside the container for the bind-mounted Docker socket (DooD).
+        # On Docker Desktop for Mac this is typically 0 (root) — see Dockerfile
+        # comment for why. Override via .env if your setup differs.
+        DOCKER_GID: ${DOCKER_GID:-0}
     container_name: dev-env
     volumes:
       - ${PROJECTS_PATH}:/workspace
       - ~/.gitconfig:/home/vscode/.gitconfig:ro
       - ~/.gitconfig.local:/home/vscode/.gitconfig.local:ro
       - ${SSH_AUTH_SOCK}:/run/host-services/ssh-auth.sock
+
+      # DooD: bind-mount the real Docker Desktop socket (NOT /var/run/docker.sock,
+      # which is a symlink on macOS — see ${DOCKER_SOCK} resolution notes below).
+      # Testcontainers inside this devcontainer launches sibling service
+      # containers directly on the host/Docker Desktop daemon, exactly as it
+      # would on a bare GHA runner — no nested daemon, no dind.
+      - ${DOCKER_SOCK}:/var/run/docker.sock
+
+      # Shared cache for Playwright-managed browser binaries (downloaded by
+      # each project's own `npx playwright install`). Persists across
+      # container rebuilds. Linux-binary-only — NOT shared with the macOS
+      # host's own Playwright cache, since browser binaries are
+      # platform-specific (see playwright-cache volume note below).
+      - playwright-cache:/home/vscode/.cache/ms-playwright
+
     environment:
       - SSH_AUTH_SOCK=${SSH_AUTH_SOCK}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - DEVCONTAINER=true
+      - TESTCONTAINERS_RYUK_DISABLED=false  # Ryuk works fine under DooD; keep enabled for cleanup
+
+    # Required for Chromium's zygote sandbox to spawn correctly under
+    # Docker's default seccomp profile. A scoped custom profile
+    # (e.g. jessfraz/dotfiles chrome.json) is preferable if you can get it
+    # loading without filesystem errors; unconfined is the working fallback.
+    security_opt:
+      - seccomp=unconfined
+
+    depends_on:
+      - caddy
+
+    ports:
+      # x11vnc — connect via `vnc://localhost:5900` for live headful browser
+      # debugging (see xvfb-start / xvfb-stop shell helpers).
+      - "5900:5900"
+
+    extra_hosts:
+      - "rp-localnerve.duckdns.org:172.19.0.2"
+      - "ln.rp-localnerve.duckdns.org:172.19.0.2"
+
     tty: true
     stdin_open: true
+
+  caddy:
+    image: serfriz/caddy-duckdns
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - DUCKDNS_TOKEN=${DUCKDNS_TOKEN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ${CADDY_CONF_PATH}:/etc/caddy   # path to your existing Caddyfile on the Mac
+      - caddy_data:/data                # reuse existing cert volume — no re-issue needed
+      - caddy_config:/config
+    networks:
+      default:
+        ipv4_address: 172.19.0.2
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # ensures host.docker.internal resolves in Linux containers
+
+volumes:
+  playwright-cache:
+  caddy_data:
+    external: true   # reuse the volume from your existing caddy-local compose project
+    name: caddy-local_caddy_data   # match whatever docker volume ls shows for your existing caddy_data
+  caddy_config:
+    external: true
+    name: caddy-local_caddy_config
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.19.0.0/16 # must not be in use check `docker network ls` networks with `docker network inspect <name> --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'`
