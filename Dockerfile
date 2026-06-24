@@ -51,10 +51,10 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     \
-    # --- Chromium (system browser, used by Puppeteer via PUPPETEER_EXECUTABLE_PATH) ---
+    # --- Chromium, chrome-driver (system browser, driver used by Puppeteer via PUPPETEER_EXECUTABLE_PATH) ---
     && add-apt-repository ppa:xtradeb/apps -y \
     && apt-get update \
-    && apt-get install -y --no-install-recommends chromium \
+    && apt-get install -y --no-install-recommends chromium chromium-driver \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     \
@@ -221,6 +221,10 @@ RUN mkdir -p ${USER_HOME}/.cache \
 USER ${USERNAME}
 
 RUN <<'EOF' tee -a ${USER_HOME}/.bashrc
+# chrome
+export CHROME_BIN=/usr/bin/chromium
+export CHROMEDRIVER_BIN=/usr/bin/chromedriver
+
 # nvm
 export NVM_DIR="${HOME}/.nvm"
 [ -s "${NVM_DIR}/nvm.sh" ] && \. "${NVM_DIR}/nvm.sh"
@@ -292,6 +296,10 @@ xvfb-stop() {
 EOF
 
 RUN <<'EOF' tee -a ${USER_HOME}/.zshrc
+# chrome
+export CHROME_BIN=/usr/bin/chromium
+export CHROMEDRIVER_BIN=/usr/bin/chromedriver
+
 # nvm
 export NVM_DIR="${HOME}/.nvm"
 [ -s "${NVM_DIR}/nvm.sh" ] && \. "${NVM_DIR}/nvm.sh"
