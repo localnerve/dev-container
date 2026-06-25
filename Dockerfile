@@ -2,6 +2,7 @@
 # Version pins — update here only
 # =============================================================================
 ARG GCM_VERSION=2.8.0
+ARG BAO_VERSION=2.5.5
 
 ARG NODE_VERSIONS="22 24"
 ARG NODE_DEFAULT=24
@@ -18,6 +19,7 @@ ARG GCM_CACHE_TIMEOUT=2592000
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
 
 ARG GCM_VERSION
+ARG BAO_VERSION
 ARG NODE_VERSIONS
 ARG NODE_DEFAULT
 ARG GO_VERSIONS
@@ -96,10 +98,29 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+# =============================================================================
+# Verify PUPPETEER_EXECUTABLE_PATH exists
+# =============================================================================
 RUN if [ ! -x "$PUPPETEER_EXECUTABLE_PATH" ]; then \
         echo "Error: Chromium not found at $PUPPETEER_EXECUTABLE_PATH"; \
         exit 1; \
     fi
+
+# =============================================================================
+# OpenBao CLI — secrets management
+# =============================================================================
+RUN BAO_ARCH=$(dpkg --print-architecture) \
+    && case "${BAO_ARCH}" in \
+         amd64) BAO_ARCH="x86_64" ;; \
+         arm64) BAO_ARCH="arm64" ;; \
+         *) echo "Unsupported arch: ${BAO_ARCH}"; exit 1 ;; \
+       esac \
+    && curl -fsSL \
+       "https://github.com/openbao/openbao/releases/download/v${BAO_VERSION}/bao_${BAO_VERSION}_Linux_${BAO_ARCH}.tar.gz" \
+       -o /tmp/bao.tar.gz \
+    && tar -xzf /tmp/bao.tar.gz -C /usr/local/bin bao \
+    && rm /tmp/bao.tar.gz \
+    && bao --version
 
 # =============================================================================
 # Playwright / Puppeteer system dependencies

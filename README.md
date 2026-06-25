@@ -4,7 +4,7 @@
 
 Creates a linux/arm64 web developer workstation with support for modern web development.
 
-## v1.3.0
+## v1.4.0
 ### Features
 
 * Multiple Node.js versions (nvm) + multiple Go versions (goenv)
@@ -17,7 +17,7 @@ Creates a linux/arm64 web developer workstation with support for modern web deve
 * Caddy duckdns challenge build side-car with reverse proxy for auth/app browser cookie auth with true SSL testing
 * Shell bash and zsh profile auto-switching for Node/Go versions based on .nvmrc/.go-version
 * seccomp=unconfined for Chromium zygote sandbox compatibility
-* Image-size optimizations (single-layer apt, stripped nvm/goenv artifacts)
+* Openbao vault secrets service sidecar with workstation bao client
 
 ## Usage
 

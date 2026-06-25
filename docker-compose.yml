@@ -1,8 +1,13 @@
+x-bao-env: &bao-env
+  BAO_ADDR: http://172.19.0.5:8200
+  BAO_TOKEN: ${BAO_TOKEN:-root}
+
 services:
   dev-workstation:
     build:
       context: .
       args:
+        BAO_VERSION: "2.5.5"
         GCM_VERSION: "2.8.0"
         NODE_VERSIONS: "22 24"
         NODE_DEFAULT: "24"
@@ -35,10 +40,11 @@ services:
       - playwright-cache:/home/vscode/.cache/ms-playwright
 
     environment:
-      - SSH_AUTH_SOCK=${SSH_AUTH_SOCK}
-      - DOCKER_HOST=unix:///var/run/docker.sock
-      - DEVCONTAINER=true
-      - TESTCONTAINERS_RYUK_DISABLED=false  # Ryuk works fine under DooD; keep enabled for cleanup
+      <<: *bao-env
+      SSH_AUTH_SOCK: ${SSH_AUTH_SOCK}
+      DOCKER_HOST: unix:///var/run/docker.sock
+      DEVCONTAINER: "true"
+      TESTCONTAINERS_RYUK_DISABLED: "false"  # Ryuk works fine under DooD; keep enabled for cleanup
 
     # Required for Chromium's zygote sandbox to spawn correctly under
     # Docker's default seccomp profile. A scoped custom profile
@@ -48,8 +54,11 @@ services:
       - seccomp=unconfined
 
     depends_on:
-      - caddy
-
+      caddy:
+        condition: service_started
+      load-secrets:
+        condition: service_completed_successfully
+ 
     ports:
       # x11vnc — connect via `vnc://localhost:5900` for live headful browser
       # debugging (see xvfb-start / xvfb-stop shell helpers).
@@ -82,6 +91,58 @@ services:
         ipv4_address: 172.19.0.2
     extra_hosts:
       - "host.docker.internal:host-gateway"  # ensures host.docker.internal resolves in Linux containers
+
+  openbao:
+    image: ghcr.io/openbao/openbao:2.5.5
+    container_name: openbao-server
+    command: ["server", "-dev"]
+    environment:
+      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      BAO_DEV_ROOT_TOKEN_ID: ${BAO_TOKEN:-root}
+      BAO_ADDR: http://127.0.0.1:8200 # used by healthcheck
+    networks:
+      default:
+        ipv4_address: 172.19.0.5
+    # Cap_add allowed for mlock (prevents memory swapping to host disk)
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: ["CMD", "bao", "status"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
+
+  load-secrets:
+    image: ghcr.io/openbao/openbao:2.5.5
+    container_name: openbao-loader
+    restart: "no"
+    depends_on:
+      openbao:
+        condition: service_healthy
+    networks:
+      default:
+    environment:
+      <<: *bao-env
+    entrypoint: ["/bin/sh"]
+    command:
+      - "-c"
+      - |
+        # Ensure KV engines exist at standard paths 'secret' and 'apps'
+        bao secrets enable -path=secret kv-v2 >/dev/null 2>&1 || true
+        bao secrets enable -path=apps kv-v2 >/dev/null 2>&1 || true
+
+        # Seed default secrets — add project entries here as needed.
+        # Format: bao kv put <path> key=value [key=value ...]
+        # These are idempotent — safe to re-run, existing values are versioned.
+        # Example:
+        # bao kv put secret/myproject \
+        #   DB_PASSWORD="${MY_DB_PASSWORD}" \
+        #   API_KEY="${MY_API_KEY}"
+
+        echo "OpenBao init complete."
+        bao kv list secret/ 2>/dev/null || echo "(secret/ is empty)"
+        bao kv list apps/ 2>/dev/null || echo "(apps/ is empty)"
 
 volumes:
   playwright-cache:
