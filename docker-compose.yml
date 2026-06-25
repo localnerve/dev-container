@@ -47,11 +47,12 @@ services:
       TESTCONTAINERS_RYUK_DISABLED: "false"  # Ryuk works fine under DooD; keep enabled for cleanup
 
     # Required for Chromium's zygote sandbox to spawn correctly under
-    # Docker's default seccomp profile. A scoped custom profile
-    # (e.g. jessfraz/dotfiles chrome.json) is preferable if you can get it
-    # loading without filesystem errors; unconfined is the working fallback.
+    # Docker's default seccomp profile. ./update-chrome-seccomp.sh updates
+    # chrome.json from Docker's default seccomp profile and merges known
+    # Chromium zygote syscall requirements for sandbox management;
+    # seccomp=unconfined is the working fallback.
     security_opt:
-      - seccomp=unconfined
+      - seccomp=./chrome.json
 
     depends_on:
       caddy:
