@@ -1,9 +1,15 @@
 # Dev Container Security Issues
 
-A qwen 3.6 (and some claude sonnet 4.7) review of the dev-container `seccomp` profile in the context of the overall dev-container architecture. This explores dev-container security issues.
+A qwen 3.6 (and some claude sonnet 4.7) review of a previous version of the dev-container `seccomp` profile in the context of the overall dev-container architecture. This explores potential dev-container security issues.
+
+This assessment resulted in the tightening the seccomp profile to latest docker defaults with the few chromium exceptions required for sandbox management merged in, left as DooD, documented risks.
+
+---
+
+> This analysis is against a previous, more permissible seccomp profile.
 
 ## `chrome.json` Seccomp Profile Custom Syscall Allow List 
-> seccomp profile for dev-container@1.5.0 vs 'unconfined'
+> seccomp profile vs 'unconfined'
 
 Your custom profile is **marginally better** than `unconfined`, but not by a practically meaningful amount. The real security concern isn't the seccomp profile—it's the bind-mounted Docker socket.
 
@@ -58,11 +64,21 @@ On Docker Desktop for Mac specifically, the Docker daemon runs inside a lightwei
 - The Docker VM's entire filesystem
 - Network configuration for all containers
 
+### More On MacOS Docker Desktop With Regard to Potential docker.sock Attack Enabled by DooD
+
+On Docker Desktop for Mac, every container — including your devcontainer and anything spawned via the docker.sock — runs inside Docker Desktop's Linux VM, which is isolated from macOS by Apple's `Virtualization.framework`. This means:
+
+- **No shared host kernel.** On bare Linux, a privileged container escape reaches the actual host kernel. On macOS, it reaches the VM's throwaway Linux kernel — a second isolation boundary sits between that and your real Mac.
+- **No host filesystem access.** A container that escapes to the VM root can only see what the VM has access to — which is limited to what you explicitly shared via Docker Desktop's file sharing settings, your bind-mounted volumes, and the VM's own ephemeral filesystem. Your Mac's actual filesystem (`/Users`, `/System`, etc.) is not visible from the VM unless you explicitly shared it.
+- **The attack surface is bounded.** The worst realistic outcome of a docker.sock exploit in this setup is root access inside the Docker Desktop Linux VM — which does have access to your bind-mounted project files, your SSH agent socket, and environment variables in running containers. That's a meaningful but bounded blast radius, not full macOS compromise.
+
+So the tradeoff is: you accept that a compromised dependency with docker.sock access could reach VM root and access your mounted files and credentials, in exchange for the practical ability to run Testcontainers and sibling service containers the same way GHA runners do. The VM layer means this doesn't translate to macOS host compromise without a separate hypervisor-level exploit, which is a substantially higher bar.
+
 ### Defense-in-Depth Assessment
 
 | Layer | Your Setup | Effectiveness |
 |-------|-----------|---------------|
-| Seccomp profile | Custom allowlist (~250 syscalls) | Low — easily bypassed via Docker API |
+| Seccomp profile | Custom allowlist | Low — easily bypassed via Docker API |
 | User namespace | Not used (root in container) | None |
 | Read-only rootfs | No (`/workspace` is writable) | None |
 | Capabilities | Default set + `IPC_LOCK` for OpenBao | Moderate — but irrelevant with socket access |
@@ -118,19 +134,13 @@ Where `chrome-default-override.json` starts with Docker's default and only adds 
 
 ### Bottom Line
 
-Your `chrome.json` profile blocks about 30% of kernel syscalls, mostly ones that require CAP_SYS_ADMIN or similar privileges anyway. Against a determined attacker with Docker socket access, it provides **no meaningful protection**. Against accidental misbehavior or untrusted code that doesn't know to use the Docker API, it's marginally better than `unconfined` but worse than Docker's default profile in terms of maintainability and coverage.
+Your `chrome.json` profile blocks many syscalls. Against a determined attacker with Docker socket access, it provides **no meaningful protection**. Against accidental misbehavior or untrusted code that doesn't know to use the Docker API, it's better than `unconfined` but worse than Docker's default profile in terms of maintainability and coverage.
 
 The most impactful change you could make is switching from DooD to DinD if isolation matters to you. If convenience matters more, just use Docker's default seccomp profile and accept the socket-mount risk as a known tradeoff.
 
-## MacOS Docker Desktop Review
+### Action
 
-On Docker Desktop for Mac, every container — including your devcontainer and anything spawned via the docker.sock — runs inside Docker Desktop's Linux VM, which is isolated from macOS by Apple's `Virtualization.framework`. This means:
-
-- **No shared host kernel.** On bare Linux, a privileged container escape reaches the actual host kernel. On macOS, it reaches the VM's throwaway Linux kernel — a second isolation boundary sits between that and your real Mac.
-- **No host filesystem access.** A container that escapes to the VM root can only see what the VM has access to — which is limited to what you explicitly shared via Docker Desktop's file sharing settings, your bind-mounted volumes, and the VM's own ephemeral filesystem. Your Mac's actual filesystem (`/Users`, `/System`, etc.) is not visible from the VM unless you explicitly shared it.
-- **The attack surface is bounded.** The worst realistic outcome of a docker.sock exploit in this setup is root access inside the Docker Desktop Linux VM — which does have access to your bind-mounted project files, your SSH agent socket, and environment variables in running containers. That's a meaningful but bounded blast radius, not full macOS compromise.
-
-So the tradeoff is: you accept that a compromised dependency with docker.sock access could reach VM root and access your mounted files and credentials, in exchange for the practical ability to run Testcontainers and sibling service containers the same way GHA runners do. The VM layer means this doesn't translate to macOS host compromise without a separate hypervisor-level exploit, which is a substantially higher bar.
+* Created `update-chrome-seccomp.sh` to download the latest docker seccomp defaults and merge in the few chromium required syscall allowances.
 
 ## More Information
 
