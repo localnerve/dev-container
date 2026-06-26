@@ -19,9 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # 7.0.0
         with:
-          token: ${{ secrets.GH_TOKEN }}
+          persist-credentials: true
           fetch-depth: 0
 
       - name: Download latest Docker default seccomp profile
