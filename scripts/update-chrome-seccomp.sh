@@ -2,20 +2,36 @@
 # =============================================================================
 # update-chrome-seccomp.sh
 #
-# Downloads Docker's default seccomp profile from moby/moby, then adds the
-# Chromium zygote / sandbox syscalls that Docker blocks by default.
+# Merges Chromium zygote/sandbox syscalls into a Docker default seccomp
+# profile, producing chrome.json with deny-by-default (SCMP_ACT_ERRNO).
 #
-# Usage:  ./update-chrome-seccomp.sh [--dry-run] [--out chrome.json]
+# Does not automatically update the local copy of seccomp docker defaults.
+# To do this manually:
+#   curl -fsSL https://raw.githubusercontent.com/moby/profiles/refs/heads/main/seccomp/default.json -o ./seccomp/docker-default.json
+#
+# The Github action `update-seccomp-profile.yml` updates the local copy of
+# the docker default seccomp automatically if the remote changes or forced from the workflow dispatch button.
+#
+# Usage:
+#   ./update-chrome-seccomp.sh [--input <file>] [--out <file>] [--dry-run]
+#
+# Options:
+#   --input <file>  Path to Docker default seccomp profile JSON.
+#                   If omitted, downloads from moby/profiles automatically.
+#   --out <file>    Output path for merged chrome.json (default: chrome.json)
+#   --dry-run       Preview changes without writing output file
 # =============================================================================
 set -euo pipefail
 
-DRY_RUN=false
+INPUT_FILE=""
 OUTPUT="chrome.json"
+DRY_RUN=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --dry-run) DRY_RUN=true; shift ;;
-        --out)     OUTPUT="$2"; shift 2 ;;
+        --input)   INPUT_FILE="$2"; shift 2 ;;
+        --out)     OUTPUT="$2";           shift 2 ;;
+        --dry-run) DRY_RUN=true;          shift ;;
         *)         echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -28,32 +44,54 @@ if ! command -v python3 &>/dev/null; then
     exit 1
 fi
 
-if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
-    echo "ERROR: curl or wget is required to download the default profile" >&2
-    exit 1
-fi
-
 # ---------------------------------------------------------------------------
-# Download Docker's default seccomp profile
+# Obtain the Docker default seccomp profile
 # ---------------------------------------------------------------------------
-PROFILE_URL="https://raw.githubusercontent.com/moby/profiles/refs/heads/main/seccomp/default.json"
-TMPFILE=$(mktemp /tmp/docker-default-seccomp.XXXXXX.json)
-trap 'rm -f "$TMPFILE"' EXIT
+TMPFILE=""
+CREATED_TMPFILE=false
 
-echo "→ Downloading Docker default seccomp profile from moby/moby ..."
-if command -v curl &>/dev/null; then
-    curl -fsSL "$PROFILE_URL" -o "$TMPFILE"
-else
-    wget -q "$PROFILE_URL" -O "$TMPFILE"
-fi
-
-# Validate it's valid JSON
-python3 -c "import json, sys; json.load(sys.stdin)" < "$TMPFILE" || {
-    echo "ERROR: Downloaded file is not valid JSON" >&2
-    exit 1
+cleanup() { 
+    # Only delete if we actually created a temporary file ourselves.
+    # Never delete files passed via --input (they belong to the repo).
+    if $CREATED_TMPFILE && [ -n "$TMPFILE" ]; then 
+        rm -f "$TMPFILE"
+    fi
 }
+trap cleanup EXIT
 
-echo "✓ Downloaded and validated default profile"
+if [[ -n "$INPUT_FILE" ]]; then
+    if [[ ! -f "$INPUT_FILE" ]]; then
+        echo "ERROR: Input file not found: $INPUT_FILE" >&2
+        exit 1
+    fi
+    TMPFILE="$INPUT_FILE"
+    echo "→ Using local Docker default profile: $INPUT_FILE"
+else
+    # Download from moby/profiles
+    PROFILE_URL="https://raw.githubusercontent.com/moby/profiles/refs/heads/main/seccomp/default.json"
+    TMPFILE=$(mktemp /tmp/docker-default-seccomp.XXXXXX.json)
+    CREATED_TMPFILE=true
+    
+    if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
+        echo "ERROR: curl or wget is required to download the default profile" >&2
+        exit 1
+    fi
+    
+    echo "→ Downloading Docker default seccomp profile from moby/profiles ..."
+    if command -v curl &>/dev/null; then
+        curl -fsSL "$PROFILE_URL" -o "$TMPFILE"
+    else
+        wget -q "$PROFILE_URL" -O "$TMPFILE"
+    fi
+    
+    # Validate it's valid JSON
+    python3 -c "import json, sys; json.load(sys.stdin)" < "$TMPFILE" || {
+        echo "ERROR: Downloaded file is not valid JSON" >&2
+        exit 1
+    }
+    
+    echo "✓ Downloaded and validated default profile"
+fi
 
 # ---------------------------------------------------------------------------
 # Chromium zygote / sandbox syscalls that Docker blocks by default.
