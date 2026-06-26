@@ -34,4 +34,4 @@ On the host, attach to running container `dev-env` from your development environ
 
 ## Docs
 
-* Qwen and Claude discussion on this dev-container's [security](docs/security/security.md) profile.
+* Analysis on this dev-container's [security](docs/security/security.md) profile, architecture options.
