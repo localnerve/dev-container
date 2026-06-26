@@ -4,7 +4,7 @@
 
 Creates a linux/arm64 web developer workstation with support for modern web development. Developed for Docker Desktop on MacOS.
 
-## v1.5.1
+## v1.6.0
 ### Features
 
 * Multiple Node.js versions (nvm) + multiple Go versions (goenv)
@@ -18,7 +18,8 @@ Creates a linux/arm64 web developer workstation with support for modern web deve
 * Caddy duckdns challenge build sidecar with reverse proxy for auth/app host cookie auth pattern with true SSL testing
 * Shell bash and zsh profile auto-switching for Node/Go versions based on .nvmrc/.go-version
 * seccomp profile generated from docker default source, merge Chromium zygote sandbox required syscalls
-  - run `update-chrome-seccomp.sh` to update `chrome.json` seccomp profile
+  - run `scripts/update-chrome-seccomp.sh` to update `chrome.json` seccomp profile [see below](#github-actions-and-seccomp-maintenance)
+  - seccomp profile is automatically maintained from docker source through Github Actions Weekly job
 * Openbao secrets vault sidecar with workstation bao client
   - `bao kv {get,put,list}` command ready
   - Preconfigured `secret` and `apps` paths
@@ -30,8 +31,34 @@ Build, run container
 docker compose up -d
 ```
 
-On the host, attach to running container `dev-env` from your development environment.
+> On the host, attach to running container `dev-env` from your development environment.
 
-## Docs
+## Github Actions and Seccomp Maintenance
 
-* Analysis on this dev-container's [security](docs/security/security.md) profile, architecture options.
+The custom seccomp profile for this dev-container, `chrome.json`, adds a few syscall allowances to the standard default docker seccomp profile to allow chromium to manage the sandbox and namespaces.
+
+To get the latest verion of the standard default docker seccomp profile from source run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/moby/profiles/refs/heads/main/seccomp/default.json -o ./seccomp/docker-default.json
+```
+
+To update the custom seccomp profile for this dev-container, `chrome.json`:
+
+```bash
+./scripts/update-chrome-seccomp.sh --input seccomp/docker-default.json --out chrome.json
+```
+
+The `update-seccomp-profile.yml` GitHub Action runs weekly to:
+  * Detect upstream changes in Docker's default seccomp profile by comparing against our local baseline \(`./seccomp/docker-default.json`\).
+  * Refresh the local copy if updates are found.
+  * Regenerate the custom dev-container profile \(`chrome.json`\) with necessary Chromium exceptions.
+
+
+## Security
+
+> Document Links
+
+* Full analysis on this dev-container's [security](docs/security/security.md) profile, and architecture decisions. Covers why DinD is not required on MacOS for a typical developer threat model.
+
+* A discussion of the trade-offs between [DinD and DooD](docs/security/dind-dood-security.md).

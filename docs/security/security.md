@@ -1,4 +1,4 @@
-# Dev Container Security Issues
+# Dev Container Security Issues and Resolutions
 
 A qwen 3.6 (and some claude sonnet 4.7) review of a previous version of the dev-container `seccomp` profile in the context of the overall dev-container architecture. This explores potential dev-container security issues.
 
@@ -138,13 +138,46 @@ Your `chrome.json` profile blocks many syscalls. Against a determined attacker w
 
 The most impactful change you could make is switching from DooD to DinD if isolation matters to you. If convenience matters more, just use Docker's default seccomp profile and accept the socket-mount risk as a known tradeoff.
 
-### Action
+## Actions Taken
 
-* Created `update-chrome-seccomp.sh` to download the latest docker seccomp defaults and merge in the few chromium required syscall allowances.
+* Created `scripts/update-chrome-seccomp.sh` to download the latest docker seccomp defaults and merge in the few chromium required syscall allowances.
+* Created `scripts/check-seccomp-diff.sh` to check docker default seccomp for changes, download and keep local copy for automated regeneration of `chrome.json` custom seccomp profile with the 9 chromium syscall allows for sandbox management merged into the docker defaults.
+* Created `update-seccomp-profile.yml` github action to run on weekly schedule or manual workflow dispatch. This keeps the seccomp up-to-date with the latest docker security practice.
+
+### Why This Is Better
+
+1. **Downloads** Docker's current default seccomp profile from `moby/profile` (the source of truth for Docker Desktop)
+2. **Identifies** which Chromium zygote/sandbox syscalls are already allowed vs blocked by Docker defaults
+3. **Merges** only the missing ones into a new profile with `defaultAction: SCMP_ACT_ERRNO`
+4. **Outputs** a clean, maintainable `chrome.json`
+
+### The Chromium Syscalls It Adds
+
+| Syscall | Why Chromium Needs It | Blocked by Docker Default? |
+|---------|----------------------|---------------------------|
+| `clone` / `clone3` | Zygote spawns child processes (renderer, GPU, etc.) | `clone` allowed, `clone3` blocked |
+| `unshare` | Creates new namespaces for sandbox isolation | **Blocked** |
+| `setns` | Joins existing namespaces during process setup | **Blocked** |
+| `bpf` | eBPF-based sandbox enforcement (Chrome's Linux sandbox) | **Blocked** |
+| `fanotify_init` / `fanotify_mark` | File system monitoring for sandbox policy | **Blocked** |
+| `pidfd_open` / `pidfd_send_signal` | PID file descriptors for signaling without `/proc` | Allowed in newer Docker defaults |
+
+### Why This Is Better Than The Previous Profile
+
+| Factor | Your Manual chrome.json | Generated Profile |
+|--------|------------------------|-------------------|
+| **Syscall count** | ~250 (manually curated) | ~130-140 (Docker defaults + 6-8 Chromium additions) |
+| **Maintenance** | You manually add every new syscall | Run the script when Docker updates their defaults |
+| **Security posture** | Same deny-by-default, but you might miss blocking something dangerous | Inherits Docker's actively-maintained blacklist of ~120 dangerous syscalls |
+| **Future-proofing** | Breaks silently if a dependency needs a new syscall | Script tells you exactly what it's adding; easy to audit |
+
+The generated profile will be significantly smaller (~140 entries vs your ~250) because Docker's defaults already allow most standard application syscalls. You're only adding the Chromium-specific exceptions on top of that well-tested baseline.
 
 ## More Information
 
 * [An analysis of DinD vs DooD](dind-dood-security.md). A discussion of the costs associated with running DinD in a devcontainer.
 
-* Verify the root permissions in the container:
-  `find / -xdev -group root -perm -020 -type f 2>/dev/null | grep -v '^/proc'` 
+* Useful command to verify the root permissions in the container:
+```bash
+find / -xdev -group root -perm -020 -type f 2>/dev/null | grep -v '^/proc'
+```
