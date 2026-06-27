@@ -48,7 +48,7 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 # =============================================================================
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       pass gpg git libssl-dev pkg-config ca-certificates curl \
+       pass gpg git ca-certificates curl \
        software-properties-common \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
@@ -96,7 +96,9 @@ RUN apt-get update \
     && apt-get install -y /tmp/gcm.deb \
     && rm /tmp/gcm.deb \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
+    # Strip accumulated doc/man/info pages from all packages installed so far
+    && rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/*
 
 # =============================================================================
 # Verify PUPPETEER_EXECUTABLE_PATH exists
@@ -150,7 +152,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get remove -y --purge nodejs \
     && apt-get autoremove -y --purge \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.npm /usr/lib/node_modules
+    && rm -f /etc/apt/sources.list.d/nodesource.list \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.npm /usr/lib/node_modules \
+    # Strip doc/man/info pages added by playwright install-deps
+    && rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/*
 
 # =============================================================================
 # nvm + Node — installed as the non-root user
@@ -175,7 +180,8 @@ RUN curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh |
     " \
     && find ${USER_HOME}/.nvm/versions -type d -name 'man' -exec rm -rf {} + 2>/dev/null || true \
     && find ${USER_HOME}/.nvm/versions -type d -name 'doc' -exec rm -rf {} + 2>/dev/null || true \
-    && find ${USER_HOME}/.nvm/versions -type d -name 'include' -exec rm -rf {} + 2>/dev/null || true
+    && find ${USER_HOME}/.nvm/versions -type d -name 'include' -exec rm -rf {} + 2>/dev/null || true \
+    && find ${USER_HOME}/.nvm/versions -type d -name 'share' -exec rm -rf {} + 2>/dev/null || true
 
 # =============================================================================
 # goenv + Go — installed as the non-root user
@@ -196,7 +202,8 @@ RUN git clone --depth=1 https://github.com/go-nv/goenv.git ${GOENV_ROOT} \
     && find ${GOENV_ROOT}/versions -type d -name 'test' -exec rm -rf {} + 2>/dev/null || true \
     && find ${GOENV_ROOT}/versions -type d -name 'testdata' -exec rm -rf {} + 2>/dev/null || true \
     && find ${GOENV_ROOT}/versions -mindepth 3 -maxdepth 3 -name 'src' -type d -exec rm -rf {} + 2>/dev/null || true \
-    && find ${GOENV_ROOT}/versions -name '*.a' -delete 2>/dev/null || true \
+    && find ${GOENV_ROOT}/versions -type d -name 'pkg' -exec rm -rf {} + 2>/dev/null || true \
+    && find ${GOENV_ROOT}/versions -mindepth 3 -maxdepth 3 -name 'doc' -type d -exec rm -rf {} + 2>/dev/null || true \
     && rm -rf ${GOENV_ROOT}/.git
 
 # =============================================================================
