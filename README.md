@@ -4,16 +4,24 @@
 
 This project delivers a Linux/ARM64 web development workstation optimized for Docker Desktop on macOS, designed to streamline modern full-stack workflows with automatic Node.js and Go version switching. It provides comprehensive browser testing capabilities via Playwright and Puppeteer across all three engines—including headful debugging via VNC—while integrating essential sidecar services like Caddy for SSL authentication testing and OpenBao for secrets management. The environment also features Docker-outside-of-Docker (DooD) support for running Testcontainers against the host daemon, backed by a secure, auto-maintained seccomp profile.
 
-## v1.6.0
+## v1.6.3
 ### Features
 
-* Multiple Node.js versions (nvm) + multiple Go versions (goenv)
-* Chromium + GCM (git-credential-manager)
-* DooD (Docker-outside-of-Docker) via host socket, GID group membership
+* Multiple Node.js versions (nvm) + multiple Go versions \(goenv\)
+* Base Chromium
+* GCM \(git-credential-manager\) with an in-memory cache store \(that expires and requires re-login\)
+  - May need to run `printf "protocol=https\nhost=github.com\n" | git credential-manager erase` in the container to force clear the cache and reauthenticate. Shell functions:
+    - `git-check` - check GCM cache state for credential reauth
+    - `git-check-remote` - check local/remote tracking state for repo
+  - Run `git credential-manager diagnose` to check cache state
+  - Run `printf "protocol=https\nhost=github.com\n" | git credential-manager get` to manually check cache credential state
+  - Host projects directory is direct bind mounted to `/workspace`
+* DooD \(Docker-outside-of-Docker\) via host socket, GID group membership
 * Docker Testcontainers support via DooD
-* Playwright/Puppeteer system dependencies (via playwright install-deps, **all three engines**)
-* Xvfb + x11vnc for headful browser debugging, with on-demand start/stop helpers
-  - Commands: `xvfb-start`, `xvfb-stop`
+* Playwright/Puppeteer system dependencies \(via playwright install-deps, **all three engines**\)
+* Xvfb + x11vnc for headful browser debugging, with on-demand start/stop helpers. Shell Functions:
+    - `xvfb-start` - start xvfb and xvfb x11vnc for visual browser debugging \(attach with tigerVnc or client that allows nopw\)
+    - `xvfb-stop` - stop xvfb and xvfb x1llvnc
 * Named volume for shared Playwright browser-binary cache across rebuilds
 * Caddy duckdns challenge build sidecar with reverse proxy for auth/app host cookie auth pattern with true SSL testing
 * Shell bash and zsh profile auto-switching for Node/Go versions based on .nvmrc/.go-version
