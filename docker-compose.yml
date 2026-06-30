@@ -78,7 +78,7 @@ services:
     cap_add:
       - NET_ADMIN
     environment:
-      - DUCKDNS_TOKEN=${DUCKDNS_TOKEN}
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN}
     ports:
       - "80:80"
       - "443:443"
@@ -107,6 +107,9 @@ services:
     # Cap_add allowed for mlock (prevents memory swapping to host disk)
     cap_add:
       - IPC_LOCK
+    volumes:
+      - openbao-file:/openbao/file
+      - openbao-logs:/openbao/logs
     healthcheck:
       test: ["CMD", "bao", "status"]
       interval: 2s
@@ -123,6 +126,9 @@ services:
         condition: service_healthy
     networks:
       default:
+    volumes:
+      - openbao-file:/openbao/file
+      - openbao-logs:/openbao/logs
     environment:
       <<: *bao-env
     entrypoint: ["/bin/sh"]
@@ -146,6 +152,10 @@ services:
         bao kv list apps/ 2>/dev/null || echo "(apps/ is empty)"
 
 volumes:
+  openbao-file:
+    name: openbao-file
+  openbao-logs:
+    name: openbao-logs
   playwright-cache:
   caddy_data:
     external: true   # reuse the volume from your existing caddy-local compose project
