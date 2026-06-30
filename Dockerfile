@@ -214,6 +214,10 @@ RUN git-credential-manager configure \
     && git config --system credential.gitHubAuthModes devicecode \
     && git config --system credential.credentialStore cache \
     && git config --system credential.cacheOptions "--timeout ${GCM_CACHE_TIMEOUT}" \
+    && git config --system fetch.prune true \
+    && git config --system fetch.pruneTags false \
+    && git config --system remote.origin.prune true \
+    && git config --system advice.statusHints true \
     && chmod 644 /etc/gitconfig
 
 # =============================================================================
@@ -288,10 +292,18 @@ _load_versions() {
     if [[ -f .go-version && -r .go-version ]]; then
         goenv local "$(cat .go-version)"
     fi
+
+    # Background fetch if in a git repo
+    if git rev-parse --git-dir > /dev/null 2>&1; then
+        git fetch --all --quiet 2>/dev/null &
+    fi
 }
 alias cd='_load_versions_cd() { command cd "$@" && _load_versions; }; _load_versions_cd'
 alias pushd='_load_versions_pushd() { command pushd "$@" && _load_versions; }; _load_versions_pushd'
 alias popd='_load_versions_popd() { command popd "$@" && _load_versions; }; _load_versions_popd'
+
+# Run once on shell startup to handle the initial working directory
+_load_versions
 
 # --- Xvfb + x11vnc on-demand helpers for headful browser debugging ---
 # DISPLAY=:99 is set globally via ENV in the image. Headless test runs are
@@ -320,6 +332,49 @@ xvfb-stop() {
     pkill -f "x11vnc.*:99"
     pkill -f "Xvfb :99"
     echo "Xvfb and x11vnc stopped"
+}
+
+git-check() {
+  # Attempt to peek at the remote using the current credentials
+  if git ls-remote --exit-code origin HEAD > /dev/null 2>&1; then
+    echo "✅ GCM Cache is active. Ready to pull."
+  else
+    echo "❌ GCM Cache has expired or is out of sync!"
+    echo "Run: printf 'protocol=https\nhost=github.com\n' | git credential-manager erase"
+  fi
+}
+
+git-check-remote() {
+  local branch
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  if [ -z "$branch" ]; then
+    echo "Not in a git repository"
+    return 1
+  fi
+
+  echo "Fetching remote state..."
+  git fetch --quiet
+
+  local local_sha remote_sha base_sha
+  local_sha=$(git rev-parse HEAD)
+  remote_sha=$(git rev-parse "@{u}" 2>/dev/null)
+
+  if [ -z "$remote_sha" ]; then
+    echo "No upstream tracking branch set for '${branch}'"
+    return 1
+  fi
+
+  base_sha=$(git merge-base HEAD "@{u}")
+
+  if [ "$local_sha" = "$remote_sha" ]; then
+    echo "Up to date with remote."
+  elif [ "$local_sha" = "$base_sha" ]; then
+    echo "Behind remote — $(git rev-list HEAD..@{u} --count) commit(s) to pull."
+  elif [ "$remote_sha" = "$base_sha" ]; then
+    echo "Ahead of remote — $(git rev-list @{u}..HEAD --count) commit(s) to push."
+  else
+    echo "Diverged from remote — $(git rev-list HEAD..@{u} --count) to pull, $(git rev-list @{u}..HEAD --count) to push."
+  fi
 }
 EOF
 
@@ -363,6 +418,11 @@ _load_versions() {
     if [[ -f .go-version && -r .go-version ]]; then
         goenv local "$(cat .go-version)"
     fi
+
+    # Background fetch if in a git repo
+    if git rev-parse --git-dir > /dev/null 2>&1; then
+        git fetch --all --quiet 2>/dev/null &
+    fi
 }
 
 autoload -Uz add-zsh-hook
@@ -395,6 +455,49 @@ xvfb-stop() {
     pkill -f "x11vnc.*:99"
     pkill -f "Xvfb :99"
     echo "Xvfb and x11vnc stopped"
+}
+
+git-check() {
+  # Attempt to peek at the remote using the current credentials
+  if git ls-remote --exit-code origin HEAD > /dev/null 2>&1; then
+    echo "✅ GCM Cache is active. Ready to pull."
+  else
+    echo "❌ GCM Cache has expired or is out of sync!"
+    echo "Run: printf 'protocol=https\nhost=github.com\n' | git credential-manager erase"
+  fi
+}
+
+git-check-remote() {
+  local branch
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  if [ -z "$branch" ]; then
+    echo "Not in a git repository"
+    return 1
+  fi
+
+  echo "Fetching remote state..."
+  git fetch --quiet
+
+  local local_sha remote_sha base_sha
+  local_sha=$(git rev-parse HEAD)
+  remote_sha=$(git rev-parse "@{u}" 2>/dev/null)
+
+  if [ -z "$remote_sha" ]; then
+    echo "No upstream tracking branch set for '${branch}'"
+    return 1
+  fi
+
+  base_sha=$(git merge-base HEAD "@{u}")
+
+  if [ "$local_sha" = "$remote_sha" ]; then
+    echo "Up to date with remote."
+  elif [ "$local_sha" = "$base_sha" ]; then
+    echo "Behind remote — $(git rev-list HEAD..@{u} --count) commit(s) to pull."
+  elif [ "$remote_sha" = "$base_sha" ]; then
+    echo "Ahead of remote — $(git rev-list @{u}..HEAD --count) commit(s) to push."
+  else
+    echo "Diverged from remote — $(git rev-list HEAD..@{u} --count) to pull, $(git rev-list @{u}..HEAD --count) to push."
+  fi
 }
 EOF
 
