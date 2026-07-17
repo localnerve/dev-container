@@ -7,12 +7,14 @@ services:
     build:
       context: .
       args:
-        BAO_VERSION: "2.5.5"
-        GCM_VERSION: "2.8.0"
-        NODE_VERSIONS: "22 24"
+        BAO_VERSION: "2.6.0"
+        GCM_VERSION: "2.9.1"
+        NODE_VERSIONS: "22 24"  # space delim for multi
         NODE_DEFAULT: "24"
-        GO_VERSIONS: "1.26.0"
-        GO_DEFAULT: "1.26.0"
+        NVM_VERSION: "0.40.1"
+        GO_VERSIONS: "1.26.5"   # space delim for multi
+        GO_DEFAULT: "1.26.5"
+        GOENV_VERSION: "3.1.4"
         GCM_CACHE_TIMEOUT: "2592000"
         # GID inside the container for the bind-mounted Docker socket (DooD).
         # On Docker Desktop for Mac this is typically 0 (root) — see Dockerfile
@@ -94,7 +96,7 @@ services:
       - "host.docker.internal:host-gateway"  # ensures host.docker.internal resolves in Linux containers
 
   openbao:
-    image: ghcr.io/openbao/openbao:2.5.5
+    image: ghcr.io/openbao/openbao:2.6.0
     container_name: openbao-server
     command: ["server", "-dev"]
     environment:
@@ -118,7 +120,7 @@ services:
       start_period: 2s
 
   load-secrets:
-    image: ghcr.io/openbao/openbao:2.5.5
+    image: ghcr.io/openbao/openbao:2.6.0
     container_name: openbao-loader
     restart: "no"
     depends_on:

@@ -1,14 +1,16 @@
 # =============================================================================
 # Version pins — update here only
 # =============================================================================
-ARG GCM_VERSION=2.8.0
-ARG BAO_VERSION=2.5.5
+ARG GCM_VERSION=2.9.1
+ARG BAO_VERSION=2.6.0
 
 ARG NODE_VERSIONS="22 24"
 ARG NODE_DEFAULT=24
+ARG NVM_VERSION=0.40.1
 
-ARG GO_VERSIONS="1.26.0"
-ARG GO_DEFAULT=1.26.0
+ARG GO_VERSIONS="1.26.5"
+ARG GO_DEFAULT=1.26.5
+ARG GOENV_VERSION=2.2.42
 
 # GCM cache timeout in seconds (default: 30 days)
 ARG GCM_CACHE_TIMEOUT=2592000
@@ -22,8 +24,10 @@ ARG GCM_VERSION
 ARG BAO_VERSION
 ARG NODE_VERSIONS
 ARG NODE_DEFAULT
+ARG NVM_VERSION
 ARG GO_VERSIONS
 ARG GO_DEFAULT
+ARG GOENV_VERSION
 ARG GCM_CACHE_TIMEOUT
 
 # GID of the host's Docker socket (DooD). On Docker Desktop for Mac this is
@@ -118,7 +122,7 @@ RUN BAO_ARCH=$(dpkg --print-architecture) \
          *) echo "Unsupported arch: ${BAO_ARCH}"; exit 1 ;; \
        esac \
     && curl -fsSL \
-       "https://github.com/openbao/openbao/releases/download/v${BAO_VERSION}/bao_${BAO_VERSION}_Linux_${BAO_ARCH}.tar.gz" \
+       "https://github.com/openbao/openbao/releases/download/v${BAO_VERSION}/openbao_${BAO_VERSION}_Linux_${BAO_ARCH}.tar.gz" \
        -o /tmp/bao.tar.gz \
     && tar -xzf /tmp/bao.tar.gz -C /usr/local/bin bao \
     && rm /tmp/bao.tar.gz \
@@ -168,7 +172,7 @@ WORKDIR ${USER_HOME}
 # Install nvm and all Node versions in one layer, then strip:
 #   - npm caches
 #   - unused man pages and docs bundled with each node install
-RUN curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash \
+RUN curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh | bash \
     && bash -c " \
         source \${NVM_DIR}/nvm.sh \
         && for v in ${NODE_VERSIONS}; do \
