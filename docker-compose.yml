@@ -7,11 +7,11 @@ services:
     build:
       context: .
       args:
-        BAO_VERSION: "2.6.0"
+        BAO_VERSION: "2.6.1"
         GCM_VERSION: "2.9.1"
         NODE_VERSIONS: "22 24"  # space delim for multi
         NODE_DEFAULT: "24"
-        NVM_VERSION: "0.40.1"
+        NVM_VERSION: "0.40.6"
         GO_VERSIONS: "1.26.5"   # space delim for multi
         GO_DEFAULT: "1.26.5"
         GOENV_VERSION: "3.1.4"
@@ -96,7 +96,7 @@ services:
       - "host.docker.internal:host-gateway"  # ensures host.docker.internal resolves in Linux containers
 
   openbao:
-    image: ghcr.io/openbao/openbao:2.6.0
+    image: ghcr.io/openbao/openbao:2.6.1
     container_name: openbao-server
     command: ["server", "-dev"]
     environment:
@@ -120,7 +120,7 @@ services:
       start_period: 2s
 
   load-secrets:
-    image: ghcr.io/openbao/openbao:2.6.0
+    image: ghcr.io/openbao/openbao:2.6.1
     container_name: openbao-loader
     restart: "no"
     depends_on:
