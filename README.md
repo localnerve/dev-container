@@ -4,18 +4,18 @@
 
 This project delivers a Linux/ARM64 web development workstation optimized for Docker Desktop on macOS, designed to streamline modern full-stack workflows with automatic Node.js and Go version switching. It provides comprehensive browser testing capabilities via Playwright and Puppeteer across all three engines—including headful debugging via VNC—while integrating essential sidecar services like Caddy for SSL authentication testing and OpenBao for secrets management. The environment also features Docker-outside-of-Docker (DooD) support for running Testcontainers against the host daemon, backed by a secure, auto-maintained seccomp profile.
 
-## v1.7.0
+## v1.7.1
 
 ### Versions
 
 | Package | Version(s) |
 | --- | --- |
 | Node | 22, 24 |
-| Nvm | 0.40.1 |
+| Nvm | 0.40.6 |
 | Golang | 1.26.5 |
 | Goenv | 2.2.42 |
 | GCM | 2.9.1 |
-| Bao | 2.6.0 |
+| Bao | 2.6.1 |
 
 ### Features
 

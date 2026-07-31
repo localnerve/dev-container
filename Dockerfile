@@ -2,11 +2,11 @@
 # Version pins — update here only
 # =============================================================================
 ARG GCM_VERSION=2.9.1
-ARG BAO_VERSION=2.6.0
+ARG BAO_VERSION=2.6.1
 
 ARG NODE_VERSIONS="22 24"
 ARG NODE_DEFAULT=24
-ARG NVM_VERSION=0.40.1
+ARG NVM_VERSION=0.40.6
 
 ARG GO_VERSIONS="1.26.5"
 ARG GO_DEFAULT=1.26.5
