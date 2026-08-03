@@ -1,3 +1,21 @@
+x-dev-build: &dev-build
+  context: .
+  args:
+    USERNAME: ${USERNAME:-vscode}
+    BAO_VERSION: "2.6.1"
+    GCM_VERSION: "2.9.1"
+    NODE_VERSIONS: "22 24"     # space delim for multi
+    NODE_DEFAULT: "24"
+    NVM_VERSION: "0.40.6"
+    GO_VERSIONS: "1.26.5"      # space delim for multi
+    GO_DEFAULT: "1.26.5"
+    GOENV_VERSION: "2.2.42"
+    GCM_CACHE_TIMEOUT: "2592000"
+    # GID inside the container for the bind-mounted Docker socket (DooD).
+    # On Docker Desktop for Mac this is typically 0 (root) — see Dockerfile
+    # comment for why. Override via .env if your setup differs.
+    DOCKER_GID: ${DOCKER_GID:-0}
+
 x-bao-env: &bao-env
   BAO_ADDR: http://172.19.0.5:8200
   BAO_TOKEN: ${BAO_TOKEN:-root}
@@ -5,27 +23,18 @@ x-bao-env: &bao-env
 services:
   dev-workstation:
     build:
-      context: .
-      args:
-        BAO_VERSION: "2.6.1"
-        GCM_VERSION: "2.9.1"
-        NODE_VERSIONS: "22 24"  # space delim for multi
-        NODE_DEFAULT: "24"
-        NVM_VERSION: "0.40.6"
-        GO_VERSIONS: "1.26.5"   # space delim for multi
-        GO_DEFAULT: "1.26.5"
-        GOENV_VERSION: "3.1.4"
-        GCM_CACHE_TIMEOUT: "2592000"
-        # GID inside the container for the bind-mounted Docker socket (DooD).
-        # On Docker Desktop for Mac this is typically 0 (root) — see Dockerfile
-        # comment for why. Override via .env if your setup differs.
-        DOCKER_GID: ${DOCKER_GID:-0}
+      <<: *dev-build
+    image: devcontainer-workstation:latest
     container_name: dev-env
     volumes:
       - ${PROJECTS_PATH}:/workspace
       - ~/.gitconfig:/home/vscode/.gitconfig:ro
       - ~/.gitconfig.local:/home/vscode/.gitconfig.local:ro
       - ${SSH_AUTH_SOCK}:/run/host-services/ssh-auth.sock
+
+      # Shared Caddy mounts so that projects can setup their own RPs
+      - caddy-conf-d:/etc/caddy/conf.d:rw  # so setup scripts can write updates to the project specific RPs
+      - ${CADDY_CONF_PATH}:/etc/caddy:ro   # so setup scripts can read the root Caddyfile for /load
 
       # DooD: bind-mount the real Docker Desktop socket (NOT /var/run/docker.sock,
       # which is a symlink on macOS — see ${DOCKER_SOCK} resolution notes below).
@@ -46,6 +55,7 @@ services:
       SSH_AUTH_SOCK: ${SSH_AUTH_SOCK}
       DOCKER_HOST: unix:///var/run/docker.sock
       DEVCONTAINER: "true"
+      DEVCONTAINER_NETWORK: "devcontainer-net"
       TESTCONTAINERS_RYUK_DISABLED: "false"  # Ryuk works fine under DooD; keep enabled for cleanup
 
     # Required for Chromium's zygote sandbox to spawn correctly under
@@ -57,8 +67,8 @@ services:
       - seccomp=./chrome.json
 
     depends_on:
-      caddy:
-        condition: service_started
+      init-caddy-conf:
+        condition: service_completed_successfully
       load-secrets:
         condition: service_completed_successfully
  
@@ -81,12 +91,19 @@ services:
       - NET_ADMIN
     environment:
       DUCKDNS_TOKEN: ${DUCKDNS_TOKEN}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:2019/config/"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"
     volumes:
-      - ${CADDY_CONF_PATH}:/etc/caddy   # path to your existing Caddyfile on the Mac
+      - ${CADDY_CONF_PATH}:/etc/caddy   # path to your existing root Caddyfile on the Mac
+      - caddy-conf-d:/etc/caddy/conf.d  # shared with dev-workstation for project overrides
       - caddy_data:/data                # reuse existing cert volume — no re-issue needed
       - caddy_config:/config
     networks:
@@ -95,6 +112,25 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"  # ensures host.docker.internal resolves in Linux containers
 
+  init-caddy-conf:
+    build:
+      <<: *dev-build
+    image: devcontainer-workstation:latest
+    user: root
+    environment:
+      USERNAME: ${USERNAME:-vscode}
+    volumes:
+      - caddy-conf-d:/etc/caddy/conf.d
+    entrypoint: ["/bin/sh"]
+    command:
+      - "-c"
+      - |
+        chown -R ${USERNAME}:${USERNAME} /etc/caddy/conf.d
+        chmod -R u+rwX /etc/caddy/conf.d
+    depends_on:
+      caddy:
+        condition: service_healthy
+    
   openbao:
     image: ghcr.io/openbao/openbao:2.6.1
     container_name: openbao-server
@@ -165,9 +201,11 @@ volumes:
   caddy_config:
     external: true
     name: caddy-local_caddy_config
+  caddy-conf-d:
 
 networks:
   default:
+    name: devcontainer-net
     ipam:
       config:
         - subnet: 172.19.0.0/16 # must not be in use check `docker network ls` networks with `docker network inspect <name> --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'`

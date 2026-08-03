@@ -1,0 +1,13 @@
+{
+	admin 0.0.0.0:2019
+}
+
+(ducktls) {
+	tls {
+		dns duckdns {env.DUCKDNS_TOKEN}
+		resolvers 8.8.8.8 8.8.4.4
+	}
+}
+
+# optionally supplied by a local project to define rp mappings
+import /etc/caddy/conf.d/*.Caddyfile
