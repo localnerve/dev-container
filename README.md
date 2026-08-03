@@ -4,7 +4,19 @@
 
 This project delivers a Linux/ARM64 web development workstation optimized for Docker Desktop on macOS, designed to streamline modern full-stack workflows with automatic Node.js and Go version switching. It provides comprehensive browser testing capabilities via Playwright and Puppeteer across all three engines—including headful debugging via VNC—while integrating essential sidecar services like Caddy for SSL authentication testing and OpenBao for secrets management. The environment also features Docker-outside-of-Docker (DooD) support for running Testcontainers against the host daemon, backed by a secure, auto-maintained seccomp profile.
 
-## v1.7.1
+![Compose Visualization](docs/architecture.svg)
+
+## v1.8.0
+
+### Release Notes
+
+* Solved flaky docker hairpin routing behavior for per project testcontainer networks. Projects now have to supply their own caddy RP definitions & aliases, update /etc/caddy/conf.d, and reload Caddy to register changes.
+  + Dev-container (this project) now contains [base caddy config](conf/Caddyfile)
+  + Added per project Caddy config model - [How to use](docs/per-project-caddy.md)
+  + Named dev network name for project testcontainers
+  + Added USERNAME env var
+  + Added init-caddy-conf one-off service to set permissions on conf.d
+  + Latest [compose visualization](docs/architecture.md)
 
 ### Versions
 
@@ -16,6 +28,7 @@ This project delivers a Linux/ARM64 web development workstation optimized for Do
 | Goenv | 2.2.42 |
 | GCM | 2.9.1 |
 | Bao | 2.6.1 |
+| Caddy | serfriz/caddy-duckdns:latest |
 
 ### Features
 
@@ -36,6 +49,9 @@ This project delivers a Linux/ARM64 web development workstation optimized for Do
     - `xvfb-stop` - stop xvfb and xvfb x1llvnc
 * Named volume for shared Playwright browser-binary cache across rebuilds
 * Caddy duckdns challenge build sidecar with reverse proxy for auth/app host cookie auth pattern with true SSL testing
+  - DEVCONTAINER_NETWORK name supplied to env for projects
+  - Projects add to the base Caddyfile, write additions to `/etc/caddy/conf.d/*.Caddyfile` in container
+  - See [docs](docs/per-project-caddy.md)
 * Shell bash and zsh profile auto-switching for Node/Go versions based on .nvmrc/.go-version
 * seccomp profile generated from docker default source, merge Chromium zygote sandbox required syscalls
   - run `scripts/update-chrome-seccomp.sh` to update `chrome.json` seccomp profile [see below](#github-actions-and-seccomp-maintenance)
