@@ -80,6 +80,7 @@ services:
     extra_hosts:
       - "rp-localnerve.duckdns.org:172.19.0.2"
       - "ln.rp-localnerve.duckdns.org:172.19.0.2"
+      - "host.docker.internal:host-gateway" # ensures host.docker.internal resolves in Linux containers
 
     tty: true
     stdin_open: true
