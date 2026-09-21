@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   check-and-update:
@@ -48,6 +49,17 @@ jobs:
           chmod +x scripts/check-seccomp-diff.sh
           ./scripts/check-seccomp-diff.sh "$UPSTREAM_FILE" "$LOCAL_FILE"
 
+      - name: Prepare review branch
+        if: steps.diff.outputs.changed == 'true' || github.event.inputs.force == 'true'
+        env:
+          BRANCH: automation/update-seccomp-profile
+        run: |
+          if git fetch origin "$BRANCH"; then
+            git switch --create "$BRANCH" --track "origin/$BRANCH"
+          else
+            git switch --create "$BRANCH"
+          fi
+
       - name: Update local copy and regenerate chrome.json
         if: steps.diff.outputs.changed == 'true' || github.event.inputs.force == 'true'
         run: |
@@ -58,8 +70,11 @@ jobs:
           chmod +x scripts/update-chrome-seccomp.sh
           ./scripts/update-chrome-seccomp.sh --input seccomp/docker-default.json --out chrome.json
 
-      - name: Commit and push changes
+      - name: Create pull request for changes
         if: steps.diff.outputs.changed == 'true' || github.event.inputs.force == 'true'
+        env:
+          BRANCH: automation/update-seccomp-profile
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -72,8 +87,25 @@ jobs:
               -m "Upstream: moby/profiles main/seccomp/default.json" \
               -m "Triggered by scheduled weekly check (Monday)"
             
-            git push origin HEAD
-            echo "::notice::Pushed updated seccomp profiles to repository."
+            git push --set-upstream origin "$BRANCH"
+
+            PR_NUMBER=$(gh pr list \
+              --head "$BRANCH" \
+              --base main \
+              --state open \
+              --json number \
+              --jq '.[0].number')
+
+            if [ -n "$PR_NUMBER" ]; then
+              echo "::notice::Updated existing seccomp profile pull request #$PR_NUMBER."
+            else
+              gh pr create \
+                --base main \
+                --head "$BRANCH" \
+                --title "chore(seccomp): update Docker default profile" \
+                --body "Updates the Docker default seccomp profile from moby/profiles and regenerates chrome.json.\n\nPlease review and approve before merging into main."
+              echo "::notice::Created pull request for updated seccomp profiles."
+            fi
           else
             echo "::warning::No actual file changes detected — skipping commit."
           fi
