@@ -38,8 +38,21 @@ with open(upstream_file) as f:
 with open(local_file) as f:
     local = json.load(f)
 
-upstream_names = {e['name'] for e in upstream.get('syscalls', []) if isinstance(e, dict)}
-local_names = {e['name'] for e in local.get('syscalls', []) if isinstance(e, dict)}
+def syscall_names(profile):
+    names = set()
+    for entry in profile.get('syscalls', []):
+        if not isinstance(entry, dict):
+            continue
+        if isinstance(entry.get('name'), str):
+            names.add(entry['name'])
+        entry_names = entry.get('names', [])
+        if isinstance(entry_names, list):
+            names.update(name for name in entry_names if isinstance(name, str))
+    return names
+
+
+upstream_names = syscall_names(upstream)
+local_names = syscall_names(local)
 
 added = sorted(upstream_names - local_names)
 removed = sorted(local_names - upstream_names)
