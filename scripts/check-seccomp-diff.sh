@@ -26,12 +26,12 @@ if [ "$UPSTREAM_HASH" != "$LOCAL_HASH" ]; then
     echo "::notice::Upstream Docker seccomp profile has changed (hash: ${LOCAL_HASH} → ${UPSTREAM_HASH})"
     
     # Show what changed using Python for clean diff output
-    python3 << 'PYTHON_SCRIPT'
+    python3 - "$UPSTREAM_FILE" "$LOCAL_FILE" << 'PYTHON_SCRIPT'
 import json
 import sys
 
-upstream_file = sys.argv[1] if len(sys.argv) > 1 else "$UPSTREAM_FILE"
-local_file = sys.argv[2] if len(sys.argv) > 2 else "$LOCAL_FILE"
+upstream_file = sys.argv[1]
+local_file = sys.argv[2]
 
 with open(upstream_file) as f:
     upstream = json.load(f)
