@@ -78,36 +78,73 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           git add seccomp/docker-default.json chrome.json
-          
-          if ! git diff --cached --quiet; then
-            git commit \
-              -m "chore(seccomp): update Docker default profile and regenerate chrome.json" \
-              -m "Upstream: moby/profiles main/seccomp/default.json" \
-              -m "Triggered by scheduled weekly check (Monday)"
-            
-            git push --set-upstream origin "$BRANCH"
 
-            PR_NUMBER=$(gh pr list \
-              --head "$BRANCH" \
-              --base main \
-              --state open \
-              --json number \
-              --jq '.[0].number')
+          # Detect which files actually changed. An upstream sync must always be
+          # committed and proposed as a PR, even when the merge produces no
+          # effective change in chrome.json — otherwise the vendored copy of the
+          # upstream profile stays stale and every future check re-diffs from an
+          # incorrect baseline.
+          PROFILE_CHANGED=false
+          CHROME_CHANGED=false
+          if ! git diff --cached --quiet -- seccomp/docker-default.json; then
+            PROFILE_CHANGED=true
+          fi
+          if ! git diff --cached --quiet -- chrome.json; then
+            CHROME_CHANGED=true
+          fi
 
-            if [ -n "$PR_NUMBER" ]; then
-              echo "::notice::Updated existing seccomp profile pull request #$PR_NUMBER."
-            else
-              gh pr create \
-                --base main \
-                --head "$BRANCH" \
-                --title "chore(seccomp): update Docker default profile" \
-                --body "Updates the Docker default seccomp profile from moby/profiles and regenerates chrome.json.\n\nPlease review and approve before merging into main."
-              echo "::notice::Created pull request for updated seccomp profiles."
-            fi
-          else
+          if [ "$PROFILE_CHANGED" = "false" ] && [ "$CHROME_CHANGED" = "false" ]; then
             echo "::warning::No actual file changes detected — skipping commit."
+            exit 0
+          fi
+
+          # Choose commit / PR wording based on what actually changed.
+          if [ "$PROFILE_CHANGED" = "true" ] && [ "$CHROME_CHANGED" = "true" ]; then
+            COMMIT_SUBJECT='chore(seccomp): update Docker default profile and regenerate chrome.json'
+            PR_TITLE='chore(seccomp): update Docker default profile'
+            PR_BODY='Updates the Docker default seccomp profile from moby/profiles and regenerates chrome.json.'$'\n\n''The merged Chrome profile has effective changes — please review the new/removed syscalls carefully.'$'\n\n''Please review and approve before merging into main.'
+          elif [ "$PROFILE_CHANGED" = "true" ]; then
+            COMMIT_SUBJECT='chore(seccomp): sync Docker default profile (no effective merge changes)'
+            PR_TITLE='chore(seccomp): sync Docker default profile'
+            PR_BODY='Syncs the local copy of the Docker default seccomp profile from moby/profiles.'$'\n\n''The upstream change does not alter the merged chrome.json, but the vendored copy must be updated so future diff checks compare against the correct baseline.'$'\n\n''Please review and approve before merging into main.'
+          else
+            COMMIT_SUBJECT='chore(seccomp): regenerate chrome.json'
+            PR_TITLE='chore(seccomp): regenerate chrome.json'
+            PR_BODY='Regenerates chrome.json from the current local Docker default seccomp profile.'$'\n\n''Please review and approve before merging into main.'
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TRIGGER_LINE="Triggered manually via workflow dispatch"
+          else
+            TRIGGER_LINE="Triggered by scheduled weekly check (Monday)"
+          fi
+
+          git commit \
+            -m "$COMMIT_SUBJECT" \
+            -m "Upstream: moby/profiles main/seccomp/default.json" \
+            -m "$TRIGGER_LINE"
+
+          git push --set-upstream origin "$BRANCH"
+
+          PR_NUMBER=$(gh pr list \
+            --head "$BRANCH" \
+            --base main \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr edit "$PR_NUMBER" --title "$PR_TITLE" --body "$PR_BODY"
+            echo "::notice::Updated existing seccomp profile pull request #$PR_NUMBER."
+          else
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY"
+            echo "::notice::Created pull request for updated seccomp profiles."
           fi
 
       - name: Report status
