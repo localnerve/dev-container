@@ -75,6 +75,7 @@ jobs:
         env:
           BRANCH: automation/update-seccomp-profile
           GH_TOKEN: ${{ github.token }}
+          UPSTREAM_CHANGED: ${{ steps.diff.outputs.changed }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -96,8 +97,12 @@ jobs:
           fi
 
           if [ "$PROFILE_CHANGED" = "false" ] && [ "$CHROME_CHANGED" = "false" ]; then
-            echo "::warning::No actual file changes detected — skipping commit."
-            exit 0
+            if [ "$UPSTREAM_CHANGED" != "true" ]; then
+              echo "::warning::No actual file changes detected — skipping commit and pull request."
+              exit 0
+            fi
+
+            echo "::notice::Upstream changed, but the update is already present on the review branch; continuing pull request handling without an empty commit."
           fi
 
           # Choose commit / PR wording based on what actually changed.
@@ -109,10 +114,13 @@ jobs:
             COMMIT_SUBJECT='chore(seccomp): sync Docker default profile (no effective merge changes)'
             PR_TITLE='chore(seccomp): sync Docker default profile'
             PR_BODY='Syncs the local copy of the Docker default seccomp profile from moby/profiles.'$'\n\n''The upstream change does not alter the merged chrome.json, but the vendored copy must be updated so future diff checks compare against the correct baseline.'$'\n\n''Please review and approve before merging into main.'
-          else
+          elif [ "$CHROME_CHANGED" = "true" ]; then
             COMMIT_SUBJECT='chore(seccomp): regenerate chrome.json'
             PR_TITLE='chore(seccomp): regenerate chrome.json'
             PR_BODY='Regenerates chrome.json from the current local Docker default seccomp profile.'$'\n\n''Please review and approve before merging into main.'
+          else
+            PR_TITLE='chore(seccomp): update Docker default profile'
+            PR_BODY='The upstream Docker default seccomp profile changed and is already present on the automation branch. This pull request brings that update forward for review.'$'\n\n''Please review and approve before merging into main.'
           fi
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -121,10 +129,12 @@ jobs:
             TRIGGER_LINE="Triggered by scheduled weekly check (Monday)"
           fi
 
-          git commit \
-            -m "$COMMIT_SUBJECT" \
-            -m "Upstream: moby/profiles main/seccomp/default.json" \
-            -m "$TRIGGER_LINE"
+          if [ "$PROFILE_CHANGED" = "true" ] || [ "$CHROME_CHANGED" = "true" ]; then
+            git commit \
+              -m "$COMMIT_SUBJECT" \
+              -m "Upstream: moby/profiles main/seccomp/default.json" \
+              -m "$TRIGGER_LINE"
+          fi
 
           git push --set-upstream origin "$BRANCH"
 
