@@ -6,14 +6,17 @@ ARG BAO_VERSION=2.6.1
 
 ARG NODE_VERSIONS="22 24"
 ARG NODE_DEFAULT=24
-ARG NVM_VERSION=0.40.6
+ARG NVM_VERSION=0.40.8
 
 ARG GO_VERSIONS="1.26.5"
 ARG GO_DEFAULT=1.26.5
-ARG GOENV_VERSION=2.2.42
+ARG GOENV_VERSION=3.2.1
 
 # GCM cache timeout in seconds (default: 30 days)
 ARG GCM_CACHE_TIMEOUT=2592000
+
+# Build time only vars as args
+ARG CURL_OPTS="-fsSL --retry 5 --retry-delay 2 --retry-all-errors"
 
 # =============================================================================
 # Base image + system packages — single RUN to minimise layers
@@ -29,6 +32,7 @@ ARG GO_VERSIONS
 ARG GO_DEFAULT
 ARG GOENV_VERSION
 ARG GCM_CACHE_TIMEOUT
+ARG CURL_OPTS
 
 # GID of the host's Docker socket (DooD). On Docker Desktop for Mac this is
 # typically root-owned inside the VM regardless of host-side ownership —
@@ -80,7 +84,7 @@ RUN apt-get update \
     #     devcontainer launches sibling service containers on that daemon,
     #     exactly as it would on a bare GHA runner. ---
     && install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
+    && curl ${CURL_OPTS} https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
     && chmod a+r /etc/apt/keyrings/docker.asc \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
        > /etc/apt/sources.list.d/docker.list \
@@ -94,7 +98,7 @@ RUN apt-get update \
     \
     # --- Git Credential Manager ---
     && ARCH=$(dpkg --print-architecture) \
-    && curl -fsSL \
+    && curl ${CURL_OPTS} \
        "https://github.com/git-ecosystem/git-credential-manager/releases/download/v${GCM_VERSION}/gcm-linux-${ARCH}-${GCM_VERSION}.deb" \
        -o /tmp/gcm.deb \
     && apt-get install -y /tmp/gcm.deb \
@@ -121,7 +125,7 @@ RUN BAO_ARCH=$(dpkg --print-architecture) \
          arm64) BAO_ARCH="arm64" ;; \
          *) echo "Unsupported arch: ${BAO_ARCH}"; exit 1 ;; \
        esac \
-    && curl -fsSL \
+    && curl ${CURL_OPTS} \
        "https://github.com/openbao/openbao/releases/download/v${BAO_VERSION}/openbao_${BAO_VERSION}_Linux_${BAO_ARCH}.tar.gz" \
        -o /tmp/bao.tar.gz \
     && tar -xzf /tmp/bao.tar.gz -C /usr/local/bin bao \
@@ -146,7 +150,7 @@ RUN BAO_ARCH=$(dpkg --print-architecture) \
 # A throwaway system Node + global playwright package is used purely to
 # invoke `install-deps`, then removed.
 # =============================================================================
-RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+RUN curl ${CURL_OPTS} https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g playwright \
     && npx playwright install-deps chromium \
@@ -172,7 +176,7 @@ WORKDIR ${USER_HOME}
 # Install nvm and all Node versions in one layer, then strip:
 #   - npm caches
 #   - unused man pages and docs bundled with each node install
-RUN curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh | bash \
+RUN curl ${CURL_OPTS} https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh | bash \
     && bash -c " \
         source \${NVM_DIR}/nvm.sh \
         && for v in ${NODE_VERSIONS}; do \

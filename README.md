@@ -6,29 +6,30 @@ This project delivers a Linux/ARM64 web development workstation optimized for Do
 
 ![Compose Visualization](docs/architecture.svg)
 
-## v1.8.0
+## v1.9.0
 
 ### Release Notes
 
-* Solved flaky docker hairpin routing behavior for per project testcontainer networks. Projects now have to supply their own caddy RP definitions & aliases, update /etc/caddy/conf.d, and reload Caddy to register changes.
-  + Dev-container (this project) now contains [base caddy config](conf/Caddyfile)
-  + Added per project Caddy config model - [How to use](docs/per-project-caddy.md)
-  + Named dev network name for project testcontainers
-  + Added USERNAME env var
-  + Added init-caddy-conf one-off service to set permissions on conf.d
-  + Latest [compose visualization](docs/architecture.md)
+* Service Bumps
+  - Nvm     0.40.6  -> 0.40.8
+  - Goenv   2.2.42  -> 3.2.1
+  - Bao     2.6.1   -> 2.7.0
+
+* More robust curl opts for building on flaky networks
 
 ### Versions
 
 | Package | Version(s) |
 | --- | --- |
 | Node | 22, 24 |
-| Nvm | 0.40.6 |
+| Nvm | 0.40.8 |
 | Golang | 1.26.5 |
-| Goenv | 2.2.42 |
+| Goenv | 3.2.1 |
 | GCM | 2.9.1 |
-| Bao | 2.6.1 |
+| Bao | 2.7.0 |
 | Caddy | serfriz/caddy-duckdns:latest |
+
+> Update to your Node or Golang versions at the top of the [`docker-compose.yml`](docker-compose.yml)
 
 ### Features
 
