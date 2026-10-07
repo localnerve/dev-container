@@ -6,16 +6,13 @@ This project delivers a Linux/ARM64 web development workstation optimized for Do
 
 ![Compose Visualization](docs/architecture.svg)
 
-## v1.9.0
+## v1.10.0
 
 ### Release Notes
 
 * Service Bumps
-  - Nvm     0.40.6  -> 0.40.8
-  - Goenv   2.2.42  -> 3.2.1
-  - Bao     2.6.1   -> 2.7.0
-
-* More robust curl opts for building on flaky networks
+  - Goenv   3.2.1   ->  3.2.2
+  - GCM     2.9.1   ->  3.0.1
 
 ### Versions
 
@@ -24,8 +21,8 @@ This project delivers a Linux/ARM64 web development workstation optimized for Do
 | Node | 22, 24 |
 | Nvm | 0.40.8 |
 | Golang | 1.26.5 |
-| Goenv | 3.2.1 |
-| GCM | 2.9.1 |
+| Goenv | 3.2.2 |
+| GCM | 3.0.1 |
 | Bao | 2.7.0 |
 | Caddy | serfriz/caddy-duckdns:latest |
 

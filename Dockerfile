@@ -1,8 +1,8 @@
 # =============================================================================
 # Version pins — update here only
 # =============================================================================
-ARG GCM_VERSION=2.9.1
-ARG BAO_VERSION=2.6.1
+ARG GCM_VERSION=3.0.1
+ARG BAO_VERSION=2.7.0
 
 ARG NODE_VERSIONS="22 24"
 ARG NODE_DEFAULT=24
@@ -10,7 +10,7 @@ ARG NVM_VERSION=0.40.8
 
 ARG GO_VERSIONS="1.26.5"
 ARG GO_DEFAULT=1.26.5
-ARG GOENV_VERSION=3.2.1
+ARG GOENV_VERSION=3.2.2
 
 # GCM cache timeout in seconds (default: 30 days)
 ARG GCM_CACHE_TIMEOUT=2592000
