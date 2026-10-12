@@ -54,6 +54,7 @@ services:
       <<: *bao-env
       SSH_AUTH_SOCK: ${SSH_AUTH_SOCK}
       DOCKER_HOST: unix:///var/run/docker.sock
+      GIT_CONFIG_PARAMETERS: "'safe.directory=*'" # GCM 3+ has difficulty with vscode container user
       DEVCONTAINER: "true"
       DEVCONTAINER_NETWORK: "devcontainer-net"
       TESTCONTAINERS_RYUK_DISABLED: "false"  # Ryuk works fine under DooD; keep enabled for cleanup
