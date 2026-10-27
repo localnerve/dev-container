@@ -6,13 +6,16 @@ This project delivers a Linux/ARM64 web development workstation optimized for Do
 
 ![Compose Visualization](docs/architecture.svg)
 
-## v1.10.0
+## v1.11.0
 
 ### Release Notes
 
+* Start tracking CaddyDuckdns image version
+* Single source of truth versioning in env file for [CDD, GCM, BAO]
 * Service Bumps
-  - Goenv   3.2.1   ->  3.2.2
-  - GCM     2.9.1   ->  3.0.1
+  - Openbao       2.7.0   ->  2.7.2
+  - GCM           3.0.1   ->  3.0.2
+  - CaddyDuckdns  2.11.7  -> (initial version)
 
 ### Versions
 
@@ -22,11 +25,12 @@ This project delivers a Linux/ARM64 web development workstation optimized for Do
 | Nvm | 0.40.8 |
 | Golang | 1.26.5 |
 | Goenv | 3.2.2 |
-| GCM | 3.0.1 |
-| Bao | 2.7.0 |
-| Caddy | serfriz/caddy-duckdns:latest |
+| GCM | 3.0.2 |
+| Bao | 2.7.2 |
+| Caddy | serfriz/caddy-duckdns:2.11.7 |
 
-> Update to your Node or Golang versions at the top of the [`docker-compose.yml`](docker-compose.yml)
+> Update to your Node or Golang versions at the top of the [`docker-compose.yml`](docker-compose.yml), \(yaml anchor\)  
+> Update Caddy, GCM, and BAO versions in .env
 
 ### Features
 
