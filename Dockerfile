@@ -1,8 +1,8 @@
 # =============================================================================
-# Version pins — update here only
+# Version pins — update defaults only here, see env, compose for current versions
 # =============================================================================
-ARG GCM_VERSION=3.0.1
-ARG BAO_VERSION=2.7.0
+ARG GCM_VERSION=3.0.2
+ARG BAO_VERSION=2.7.2
 
 ARG NODE_VERSIONS="22 24"
 ARG NODE_DEFAULT=24

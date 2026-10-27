@@ -2,8 +2,8 @@ x-dev-build: &dev-build
   context: .
   args:
     USERNAME: ${USERNAME:-vscode}
-    BAO_VERSION: "2.7.0"
-    GCM_VERSION: "3.0.1"
+    BAO_VERSION: ${BAO_VERSION:-2.7.2}
+    GCM_VERSION: ${GCM_VERSION:-3.0.2}
     NODE_VERSIONS: "22 24"     # space delim for multi
     NODE_DEFAULT: "24"
     NVM_VERSION: "0.40.8"
@@ -87,7 +87,7 @@ services:
     stdin_open: true
 
   caddy:
-    image: serfriz/caddy-duckdns
+    image: serfriz/caddy-duckdns:${CDD_VERSION}
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
@@ -134,7 +134,7 @@ services:
         condition: service_healthy
     
   openbao:
-    image: ghcr.io/openbao/openbao:2.7.0
+    image: ghcr.io/openbao/openbao:${BAO_VERSION}
     container_name: openbao-server
     command: ["server", "-dev"]
     environment:
@@ -158,7 +158,7 @@ services:
       start_period: 2s
 
   load-secrets:
-    image: ghcr.io/openbao/openbao:2.7.0
+    image: ghcr.io/openbao/openbao:${BAO_VERSION}
     container_name: openbao-loader
     restart: "no"
     depends_on:
